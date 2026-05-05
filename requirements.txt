@@ -1,0 +1,31 @@
+# Core Flask
+Flask==2.3.2
+Flask-SocketIO==5.3.4
+Flask-CORS==4.0.0
+python-socketio==5.9.0
+
+# Networking / packet capture
+scapy==2.5.0
+
+# System monitoring
+psutil==5.9.5
+netifaces==0.11.0
+
+# Async (used by network.py)
+eventlet==0.33.3
+
+# Utilities
+python-dotenv==1.0.0
+
+# ── Required by f_m.py (File & Mouse Monitor) ────────────────────────────────
+# numpy was missing – f_m.py imports it at the top level; without it the
+# entire File & Mouse Monitor process crashes on startup with ImportError.
+numpy>=1.21.0
+
+# Optional: real mouse tracking (simulation fallback used if not installed)
+# Uncomment or install separately:
+#   pip install pynput --break-system-packages
+pynput>=1.7.6
+
+# Optional: ML model inference (heuristic fallback used if not installed)
+# tensorflow>=2.10.0

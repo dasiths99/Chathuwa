@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberWatch — Security Monitoring System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:        #070c1a;
+            --bg-card:   #0d1526;
+            --bg-card2:  #111d35;
+            --border:    rgba(0,200,255,0.08);
+            --border-hi: rgba(0,200,255,0.22);
+            --cyan:      #00c8ff;
+            --green:     #00e5a0;
+            --yellow:    #ffb300;
+            --red:       #ff3b5c;
+            --purple:    #a855f7;
+            --text:      #cdd6f4;
+            --text-2:    #8892a4;
+            --text-3:    #3d4f6e;
+            --radius:    14px;
+            --radius-sm: 8px;
+            --shadow:    0 4px 24px rgba(0,0,0,0.5);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg); color: var(--text);
+            min-height: 100vh; overflow-x: hidden;
+        }
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 20% -10%, rgba(0,200,255,0.06) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 80% 110%, rgba(168,85,247,0.05) 0%, transparent 60%);
+            pointer-events: none; z-index: 0;
+        }
+        .bg-grid {
+            position: fixed; inset: 0;
+            background-image:
+                linear-gradient(rgba(0,200,255,0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,200,255,0.025) 1px, transparent 1px);
+            background-size: 50px 50px; pointer-events: none; z-index: 0;
+        }
+        .page-wrap {
+            position: relative; z-index: 1;
+            max-width: 1400px; margin: 0 auto;
+            padding: 28px 24px 48px;
+            display: flex; flex-direction: column; gap: 24px;
+        }
+
+        /* Header */
+        .hero {
+            text-align: center;
+            background: rgba(13,21,38,0.85);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 40px 24px 32px;
+            backdrop-filter: blur(12px);
+            box-shadow: var(--shadow);
+            position: relative; overflow: hidden;
+        }
+        .hero::before {
+            content: ''; position: absolute;
+            top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--cyan), var(--purple), transparent);
+        }
+        .hero-logo {
+            width: 60px; height: 60px; margin: 0 auto 20px;
+            background: linear-gradient(135deg, var(--cyan), var(--purple));
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700; color: #fff;
+            box-shadow: 0 0 30px rgba(0,200,255,0.3);
+        }
+        .hero h1 {
+            font-size: 28px; font-weight: 800; letter-spacing: -0.5px;
+            background: linear-gradient(90deg, var(--cyan), var(--purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 8px;
+        }
+        .hero p { font-size: 13.5px; color: var(--text-2); margin-bottom: 20px; }
+        .hero-badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .hero-badge {
+            font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 20px;
+            border: 1px solid var(--border-hi); background: var(--bg-card2); color: var(--text-2);
+        }
+        .hero-badge.active { border-color: rgba(0,229,160,0.3); color: var(--green); background: rgba(0,229,160,0.1); }
+
+        /* System Stats */
+        .sys-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        @media (max-width: 800px) { .sys-stats { grid-template-columns: repeat(2,1fr); } }
+
+        .sys-card {
+            background: rgba(13,21,38,0.85);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 20px; text-align: center;
+            backdrop-filter: blur(12px); box-shadow: var(--shadow);
+            transition: border-color 0.3s;
+        }
+        .sys-card:hover { border-color: var(--border-hi); }
+        .sys-card-icon {
+            width: 36px; height: 36px; border-radius: 9px; margin: 0 auto 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 15px; font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .icon-cyan   { background: rgba(0,200,255,0.1);  border: 1px solid rgba(0,200,255,0.2);  color: var(--cyan); }
+        .icon-green  { background: rgba(0,229,160,0.1);  border: 1px solid rgba(0,229,160,0.2);  color: var(--green); }
+        .icon-yellow { background: rgba(255,179,0,0.1);  border: 1px solid rgba(255,179,0,0.2);  color: var(--yellow); }
+        .icon-purple { background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.2); color: var(--purple); }
+        .sys-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 24px; font-weight: 700; color: var(--text); margin-bottom: 6px;
+        }
+        .sys-label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-2); }
+
+        /* Component Cards */
+        .components-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        @media (max-width: 900px) { .components-grid { grid-template-columns: 1fr; } }
+
+        .comp-card {
+            background: rgba(13,21,38,0.85);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            backdrop-filter: blur(12px); box-shadow: var(--shadow);
+            overflow: hidden; transition: border-color 0.3s, transform 0.2s;
+        }
+        .comp-card:hover { border-color: var(--border-hi); transform: translateY(-2px); }
+
+        .comp-header {
+            padding: 20px; position: relative;
+            border-bottom: 1px solid var(--border);
+        }
+        .comp-header-bar {
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+        }
+        .bar-network { background: linear-gradient(90deg, var(--cyan), transparent); }
+        .bar-web     { background: linear-gradient(90deg, var(--purple), transparent); }
+        .bar-file    { background: linear-gradient(90deg, var(--green), transparent); }
+
+        .comp-header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+
+        .comp-icon {
+            width: 38px; height: 38px; border-radius: 9px;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 700;
+        }
+
+        .status-pill {
+            font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+            padding: 3px 10px; border-radius: 12px;
+        }
+        .pill-active   { background: rgba(0,229,160,0.1);  color: var(--green);  border: 1px solid rgba(0,229,160,0.25); }
+        .pill-inactive { background: rgba(255,59,92,0.1);  color: var(--red);    border: 1px solid rgba(255,59,92,0.25); }
+        .pill-checking { background: rgba(255,179,0,0.1);  color: var(--yellow); border: 1px solid rgba(255,179,0,0.25); }
+
+        .comp-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+        .comp-desc  { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+
+        .comp-body { padding: 20px; }
+
+        .feature-list { list-style: none; margin-bottom: 20px; }
+        .feature-list li {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 0; font-size: 12px; color: var(--text-2);
+            border-bottom: 1px solid rgba(0,200,255,0.04);
+        }
+        .feature-list li:last-child { border-bottom: none; }
+        .feat-dot {
+            width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
+        }
+        .dot-cyan   { background: var(--cyan); }
+        .dot-purple { background: var(--purple); }
+        .dot-green  { background: var(--green); }
+
+        .port-tag {
+            display: inline-block; font-family: 'JetBrains Mono', monospace;
+            font-size: 10px; padding: 2px 8px; border-radius: 5px;
+            background: var(--bg-card2); border: 1px solid var(--border);
+            color: var(--text-2); margin-bottom: 14px;
+        }
+
+        .launch-btn {
+            width: 100%; padding: 10px;
+            border-radius: var(--radius-sm);
+            border: 1px solid; font-family: 'Inter', sans-serif;
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; background: transparent;
+        }
+        .launch-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+        .launch-network { border-color: rgba(0,200,255,0.4); color: var(--cyan); }
+        .launch-network:hover { background: rgba(0,200,255,0.08); }
+        .launch-web     { border-color: rgba(168,85,247,0.4); color: var(--purple); }
+        .launch-web:hover     { background: rgba(168,85,247,0.08); }
+        .launch-file    { border-color: rgba(0,229,160,0.4); color: var(--green); }
+        .launch-file:hover    { background: rgba(0,229,160,0.08); }
+
+        /* Info panel */
+        .info-panel {
+            background: rgba(13,21,38,0.85);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 20px; backdrop-filter: blur(12px); box-shadow: var(--shadow);
+        }
+        .info-panel h3 {
+            font-size: 11px; font-weight: 600; letter-spacing: 1px;
+            text-transform: uppercase; color: var(--text-2); margin-bottom: 16px;
+        }
+        .info-grid {
+            display: grid; grid-template-columns: repeat(4,1fr); gap: 12px;
+        }
+        @media (max-width: 700px) { .info-grid { grid-template-columns: repeat(2,1fr); } }
+        .info-item { }
+        .info-label { font-size: 10px; color: var(--text-3); margin-bottom: 4px; }
+        .info-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; color: var(--cyan);
+            background: var(--bg-card2); border: 1px solid var(--border);
+            padding: 4px 8px; border-radius: 5px; display: inline-block;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center; color: var(--text-3);
+            font-size: 11px; padding: 8px 0;
+        }
+    </style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="page-wrap">
+
+    <!-- Hero Header -->
+    <div class="hero">
+        <div class="hero-logo">CW</div>
+        <h1>Unified Security Monitoring System</h1>
+        <p>Real-time monitoring for network traffic, web access, and user behavior — ML-powered threat detection</p>
+        <div class="hero-badges">
+            <span class="hero-badge active" id="system-status">All Systems Active</span>
+            <span class="hero-badge active">Real-time Monitoring</span>
+            <span class="hero-badge">ML Anomaly Detection</span>
+        </div>
+    </div>
+
+    <!-- System Stats -->
+    <div class="sys-stats">
+        <div class="sys-card">
+            <div class="sys-card-icon icon-cyan">UP</div>
+            <div class="sys-value" id="uptime">0s</div>
+            <div class="sys-label">System Uptime</div>
+        </div>
+        <div class="sys-card">
+            <div class="sys-card-icon icon-green">SVC</div>
+            <div class="sys-value" id="active-services">3</div>
+            <div class="sys-label">Active Services</div>
+        </div>
+        <div class="sys-card">
+            <div class="sys-card-icon icon-yellow">CPU</div>
+            <div class="sys-value" id="cpu-usage">0%</div>
+            <div class="sys-label">CPU Usage</div>
+        </div>
+        <div class="sys-card">
+            <div class="sys-card-icon icon-purple">MEM</div>
+            <div class="sys-value" id="memory-usage">0%</div>
+            <div class="sys-label">Memory Usage</div>
+        </div>
+    </div>
+
+    <!-- Component Cards -->
+    <div class="components-grid">
+
+        <!-- Network -->
+        <div class="comp-card">
+            <div class="comp-header">
+                <div class="comp-header-bar bar-network"></div>
+                <div class="comp-header-top">
+                    <div class="comp-icon icon-cyan">NET</div>
+                    <span class="status-pill pill-checking" id="network-status">Checking...</span>
+                </div>
+                <div class="comp-title">Network Traffic Monitor</div>
+                <div class="comp-desc">Real-time packet capture, protocol detection, and ML-based threat classification</div>
+            </div>
+            <div class="comp-body">
+                <ul class="feature-list">
+                    <li><span class="feat-dot dot-cyan"></span>Real-time packet capture</li>
+                    <li><span class="feat-dot dot-cyan"></span>Protocol analysis — TCP / UDP / ICMP</li>
+                    <li><span class="feat-dot dot-cyan"></span>Bandwidth monitoring</li>
+                    <li><span class="feat-dot dot-cyan"></span>ML attack classification</li>
+                    <li><span class="feat-dot dot-cyan"></span>Connection tracking</li>
+                </ul>
+                <div><span class="port-tag">localhost:5001</span></div>
+                <button class="launch-btn launch-network" onclick="openComponent('network')">Launch Network Monitor</button>
+            </div>
+        </div>
+
+        <!-- Web Access -->
+        <div class="comp-card">
+            <div class="comp-header">
+                <div class="comp-header-bar bar-web"></div>
+                <div class="comp-header-top">
+                    <div class="comp-icon icon-purple">WEB</div>
+                    <span class="status-pill pill-checking" id="web-status">Checking...</span>
+                </div>
+                <div class="comp-title">Web Access Monitor</div>
+                <div class="comp-desc">URL capture and ML-based attack detection — phishing, fraud, ransomware classification</div>
+            </div>
+            <div class="comp-body">
+                <ul class="feature-list">
+                    <li><span class="feat-dot dot-purple"></span>Real-time URL capture</li>
+                    <li><span class="feat-dot dot-purple"></span>HTTP / HTTPS monitoring</li>
+                    <li><span class="feat-dot dot-purple"></span>Domain frequency analysis</li>
+                    <li><span class="feat-dot dot-purple"></span>Threat classification</li>
+                    <li><span class="feat-dot dot-purple"></span>Access logs with timestamps</li>
+                </ul>
+                <div><span class="port-tag">localhost:5002</span></div>
+                <button class="launch-btn launch-web" onclick="openComponent('web')">Launch Web Monitor</button>
+            </div>
+        </div>
+
+        <!-- File & Mouse -->
+        <div class="comp-card">
+            <div class="comp-header">
+                <div class="comp-header-bar bar-file"></div>
+                <div class="comp-header-top">
+                    <div class="comp-icon icon-green">F+M</div>
+                    <span class="status-pill pill-checking" id="file-status">Checking...</span>
+                </div>
+                <div class="comp-title">File &amp; Mouse Monitor</div>
+                <div class="comp-desc">File system change detection and mouse movement analysis with autoencoder anomaly scoring</div>
+            </div>
+            <div class="comp-body">
+                <ul class="feature-list">
+                    <li><span class="feat-dot dot-green"></span>File access monitoring</li>
+                    <li><span class="feat-dot dot-green"></span>Mouse movement tracking</li>
+                    <li><span class="feat-dot dot-green"></span>Autoencoder anomaly detection</li>
+                    <li><span class="feat-dot dot-green"></span>Risk score classification</li>
+                    <li><span class="feat-dot dot-green"></span>Behavior analytics</li>
+                </ul>
+                <div><span class="port-tag">localhost:5003</span></div>
+                <button class="launch-btn launch-file" onclick="openComponent('file')">Launch File Monitor</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Endpoint Info -->
+    <div class="info-panel">
+        <h3>Service Endpoints</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Main Dashboard</div>
+                <div class="info-val">localhost:5000</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Network Monitor</div>
+                <div class="info-val">localhost:5001</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Web Monitor</div>
+                <div class="info-val">localhost:5002</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">File / Mouse Monitor</div>
+                <div class="info-val">localhost:5003</div>
+            </div>
+        </div>
+    </div>
+
+    <footer>CyberWatch — Unified Security Monitoring System &nbsp;|&nbsp; ML-Powered Threat Detection &nbsp;|&nbsp; 2025</footer>
+
+</div>
+
+<script>
+    let startTime = new Date();
+
+    function openComponent(component) {
+        const urls = { network: 'http://localhost:5001', web: 'http://localhost:5002', file: 'http://localhost:5003' };
+        if (urls[component]) window.open(urls[component], '_blank');
+    }
+
+    async function checkComponentStatus() {
+        try {
+            const res  = await fetch('/api/components/status');
+            const data = await res.json();
+            let active = 0;
+
+            function setStatus(id, running) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (running) {
+                    el.textContent = 'Active'; el.className = 'status-pill pill-active'; active++;
+                } else {
+                    el.textContent = 'Inactive'; el.className = 'status-pill pill-inactive';
+                }
+            }
+
+            setStatus('network-status', data.network_flow?.running);
+            setStatus('web-status',     data.web_access?.running);
+            setStatus('file-status',    data.file_mouse?.running);
+
+            document.getElementById('active-services').textContent = active;
+        } catch {
+            ['network-status','web-status','file-status'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.textContent = 'Offline'; el.className = 'status-pill pill-inactive'; }
+            });
+        }
+    }
+
+    async function getSystemStats() {
+        try {
+            const res  = await fetch('/api/system/stats');
+            const data = await res.json();
+            if (!data.error) {
+                document.getElementById('cpu-usage').textContent    = Math.round(data.cpu.percent) + '%';
+                document.getElementById('memory-usage').textContent = Math.round(data.memory.percent) + '%';
+            }
+        } catch {}
+    }
+
+    function updateUptime() {
+        const diff = Math.floor((new Date() - startTime) / 1000);
+        const h = Math.floor(diff / 3600), m = Math.floor((diff % 3600) / 60), s = diff % 60;
+        document.getElementById('uptime').textContent = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+    }
+
+    checkComponentStatus();
+    getSystemStats();
+    updateUptime();
+    setInterval(updateUptime, 1000);
+    setInterval(getSystemStats, 3000);
+    setInterval(checkComponentStatus, 5000);
+</script>
+</body>
+</html>
