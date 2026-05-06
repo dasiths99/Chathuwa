@@ -315,7 +315,10 @@ def get_system_stats():
     try:
         cpu_percent = psutil.cpu_percent(interval=0.5)
         memory = psutil.virtual_memory()
-        disk   = psutil.disk_usage('/')
+        import shutil as _shutil
+        _d = _shutil.disk_usage('C:')
+        disk = type('D', (), {'total': _d.total, 'used': _d.used, 'free': _d.free,
+                              'percent': round(_d.used / _d.total * 100, 1)})()
         return jsonify({
             'cpu':    {'percent': cpu_percent, 'cores': psutil.cpu_count()},
             'memory': {

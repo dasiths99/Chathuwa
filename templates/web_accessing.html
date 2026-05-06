@@ -4,170 +4,422 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Access Monitor – ML Attack Detection</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        :root {
+            --bg-primary:    #080d14;
+            --bg-secondary:  #0d1421;
+            --bg-card:       #111827;
+            --bg-card-hover: #1a2535;
+            --border:        #1e2d3d;
+            --border-bright: #2a3f55;
+            --text-primary:  #e2e8f0;
+            --text-secondary:#94a3b8;
+            --text-muted:    #475569;
+            --cyan:          #00d4ff;
+            --cyan-dim:      rgba(0,212,255,0.12);
+            --purple:        #a855f7;
+            --purple-dim:    rgba(168,85,247,0.12);
+            --green:         #10b981;
+            --green-dim:     rgba(16,185,129,0.12);
+            --red:           #ef4444;
+            --red-dim:       rgba(239,68,68,0.12);
+            --orange:        #f59e0b;
+            --orange-dim:    rgba(245,158,11,0.12);
+            --pink:          #ec4899;
+            --pink-dim:      rgba(236,72,153,0.12);
+            --font-mono:     'JetBrains Mono', monospace;
+            --radius:        10px;
+            --shadow:        0 4px 24px rgba(0,0,0,0.4);
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             min-height: 100vh;
-            padding: 20px;
+            padding: 24px;
         }
 
-        .container { max-width: 1400px; margin: 0 auto; }
+        .container { max-width: 1440px; margin: 0 auto; }
 
+        /* ── HEADER ── */
         .header {
-            background: white; border-radius: 10px; padding: 20px;
-            margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px 28px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
         }
-        h1 { color: #333; margin-bottom: 10px; }
 
-        .status-bar { display: flex; gap: 10px; align-items: center; margin-top: 15px; flex-wrap: wrap; }
+        .header-left { display: flex; align-items: center; gap: 16px; }
 
-        .status { padding: 8px 16px; border-radius: 5px; font-weight: bold; }
-        .status-stopped { background: #dc3545; color: white; }
-        .status-started { background: #28a745; color: white; }
+        .logo-box {
+            width: 48px; height: 48px;
+            background: linear-gradient(135deg, var(--pink), var(--purple));
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 15px; color: #fff; letter-spacing: -0.5px;
+            flex-shrink: 0;
+        }
+
+        .header-title { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+        .header-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
+
+        .status-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+        /* proxy status pill */
+        .status {
+            padding: 7px 14px; border-radius: 6px;
+            font-weight: 700; font-size: 12px;
+            font-family: var(--font-mono); letter-spacing: 0.5px;
+            border: 1px solid transparent;
+        }
+        .status-stopped { background: var(--red-dim); color: var(--red); border-color: rgba(239,68,68,0.25); }
+        .status-started { background: var(--green-dim); color: var(--green); border-color: rgba(16,185,129,0.25); }
 
         button {
-            padding: 8px 20px; border: none; border-radius: 5px; cursor: pointer;
-            font-size: 14px; font-weight: bold; transition: all 0.3s;
+            padding: 8px 18px;
+            border: 1px solid var(--border-bright);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 0.4px;
+            transition: all 0.2s;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
         }
-        button:hover { transform: translateY(-2px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        .btn-start { background: #28a745; color: white; }
-        .btn-stop { background: #dc3545; color: white; }
-        .btn-clear { background: #ffc107; color: #333; }
-        .btn-report { background: #6f42c1; color: white; }
+        button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        button:disabled { opacity: 0.35; cursor: not-allowed; }
 
-        /* ── ML STATUS BANNER ── */
+        .btn-start  { background: var(--green-dim);  color: var(--green);  border-color: rgba(16,185,129,0.35); }
+        .btn-stop   { background: var(--red-dim);    color: var(--red);    border-color: rgba(239,68,68,0.35); }
+        .btn-clear  { background: var(--orange-dim); color: var(--orange); border-color: rgba(245,158,11,0.35); }
+        .btn-report { background: var(--purple-dim); color: var(--purple); border-color: rgba(168,85,247,0.35); }
+
+        /* ── ML BANNER ── */
         .ml-banner {
-            background: white; border-radius: 10px; padding: 15px 20px;
-            margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
-            border-left: 5px solid #6f42c1;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--purple);
+            border-radius: var(--radius);
+            padding: 16px 22px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;
         }
-        .ml-banner-info { display: flex; align-items: center; gap: 12px; }
-        .ml-badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; }
-        .ml-badge.active { background: #d4edda; color: #155724; }
-        .ml-badge.heuristic { background: #fff3cd; color: #856404; }
+        .ml-banner-info { display: flex; align-items: center; gap: 14px; }
+
+        .ml-icon-box {
+            width: 38px; height: 38px;
+            background: var(--purple-dim);
+            border: 1px solid rgba(168,85,247,0.3);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; color: var(--purple);
+            font-family: var(--font-mono); letter-spacing: 0;
+        }
+
+        .ml-banner-label { font-weight: 700; color: var(--text-primary); font-size: 14px; }
+        .ml-banner-sub   { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
+
+        .ml-badge {
+            padding: 4px 12px; border-radius: 20px;
+            font-size: 11px; font-weight: 700;
+            font-family: var(--font-mono); letter-spacing: 0.5px;
+        }
+        .ml-badge.active    { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(16,185,129,0.3); }
+        .ml-badge.heuristic { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(245,158,11,0.3); }
+
+        .ml-banner-meta { display: flex; gap: 20px; font-size: 12px; color: var(--text-secondary); }
+        .ml-banner-meta strong { color: var(--text-primary); font-weight: 600; }
+
+        /* ── PROXY INFO ── */
+        .proxy-info {
+            border-radius: 8px; padding: 14px 18px; margin-bottom: 20px;
+            font-size: 13px; border: 1px solid transparent;
+        }
+        .proxy-info.warning {
+            background: var(--orange-dim);
+            border-color: rgba(245,158,11,0.25);
+            color: var(--orange);
+        }
+        .proxy-info.success {
+            background: var(--green-dim);
+            border-color: rgba(16,185,129,0.25);
+            color: var(--green);
+        }
+        .proxy-info strong { font-weight: 700; }
+        .proxy-info small  { opacity: 0.8; }
 
         /* ── STATS GRID ── */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px; margin-bottom: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+            gap: 14px;
+            margin-bottom: 20px;
         }
+
         .stat-card {
-            background: white; border-radius: 10px; padding: 20px;
-            text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.3s;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            text-align: center;
+            box-shadow: var(--shadow);
+            transition: border-color 0.2s, transform 0.2s;
         }
-        .stat-card:hover { transform: translateY(-5px); }
-        .stat-number { font-size: 2rem; font-weight: bold; color: #667eea; margin: 8px 0; }
-        .stat-number.danger { color: #dc3545; }
-        .stat-number.success { color: #28a745; }
-        .stat-number.warning { color: #ffc107; }
-        .stat-label { color: #666; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-card:hover { border-color: var(--border-bright); transform: translateY(-2px); }
+
+        .stat-number {
+            font-size: 2rem; font-weight: 700;
+            font-family: var(--font-mono);
+            color: var(--cyan); margin: 10px 0 4px;
+        }
+        .stat-number.danger  { color: var(--red); }
+        .stat-number.success { color: var(--green); }
+        .stat-number.warning { color: var(--orange); }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            font-weight: 600;
+        }
 
         /* ── ML ATTACK BREAKDOWN ── */
         .ml-panel {
-            background: white; border-radius: 10px; padding: 20px;
-            margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
         }
-        .ml-panel h3 { color: #333; margin-bottom: 15px; }
+        .panel-title {
+            font-size: 13px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 1.2px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .panel-title::before {
+            content: ''; display: block;
+            width: 3px; height: 14px;
+            background: var(--pink);
+            border-radius: 2px;
+        }
+
         .attack-types-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 12px; margin-bottom: 15px;
+            gap: 12px;
         }
+
         .attack-type-card {
-            border-radius: 8px; padding: 12px 15px;
+            border-radius: 8px; padding: 14px 16px;
             display: flex; justify-content: space-between; align-items: center;
-            font-size: 13px; font-weight: 600; transition: transform 0.2s;
+            font-size: 12px; font-weight: 600;
+            border: 1px solid transparent;
+            transition: transform 0.15s;
         }
         .attack-type-card:hover { transform: scale(1.02); }
-        .attack-type-card.benign { background: #d4edda; color: #155724; }
-        .attack-type-card.ddos { background: #f8d7da; color: #721c24; }
-        .attack-type-card.fraud { background: #fff3cd; color: #856404; }
-        .attack-type-card.phishing { background: #fce4ec; color: #880e4f; }
-        .attack-type-card.ransomware { background: #ffebee; color: #b71c1c; }
-        .attack-count { font-size: 18px; font-weight: 700; }
+        .attack-type-card.benign    { background: var(--green-dim);  color: var(--green);  border-color: rgba(16,185,129,0.2); }
+        .attack-type-card.ddos      { background: var(--red-dim);    color: var(--red);    border-color: rgba(239,68,68,0.2); }
+        .attack-type-card.fraud     { background: var(--orange-dim); color: var(--orange); border-color: rgba(245,158,11,0.2); }
+        .attack-type-card.phishing  { background: var(--pink-dim);   color: var(--pink);   border-color: rgba(236,72,153,0.2); }
+        .attack-type-card.ransomware{ background: var(--purple-dim); color: var(--purple); border-color: rgba(168,85,247,0.2); }
 
-        /* ── DONUT CHART ── */
+        .attack-count { font-size: 20px; font-weight: 700; font-family: var(--font-mono); }
+
+        /* ── CHARTS ── */
         .charts-row {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;
         }
-        .chart-card {
-            background: white; border-radius: 10px; padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        .chart-card h3 { color: #333; margin-bottom: 15px; }
-        .chart-card canvas { max-height: 250px; }
 
-        /* ── PROXY INFO ── */
-        .proxy-info {
-            border-radius: 8px; padding: 15px; margin-bottom: 20px;
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+            box-shadow: var(--shadow);
         }
-        .proxy-info.warning { background: #fff3cd; border-left: 4px solid #ffc107; }
-        .proxy-info.success { background: #d4edda; border-left: 4px solid #28a745; }
+        .chart-card canvas { max-height: 260px; }
 
         /* ── FEED ── */
-        .feed { background: white; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .feed-header {
-            padding: 15px; border-radius: 10px 10px 0 0; font-weight: bold;
-            display: flex; justify-content: space-between;
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;
+        .feed {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
         }
+
+        .feed-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--bg-secondary);
+        }
+
+        .feed-count-badge {
+            background: var(--cyan-dim);
+            color: var(--cyan);
+            border: 1px solid rgba(0,212,255,0.2);
+            border-radius: 20px;
+            padding: 2px 10px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+        }
+
         .feed-content { max-height: 420px; overflow-y: auto; }
+        .feed-content::-webkit-scrollbar { width: 4px; }
+        .feed-content::-webkit-scrollbar-track { background: var(--bg-primary); }
+        .feed-content::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
 
         .url-item {
-            padding: 12px 15px; border-bottom: 1px solid #eee;
-            animation: fadeIn 0.3s ease-out; transition: background 0.2s;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            animation: fadeIn 0.3s ease-out;
+            transition: background 0.15s;
         }
-        .url-item:hover { background: #f8f9fa; }
-        .url-item.threat-item { border-left: 4px solid #dc3545; background: #fff5f5; }
-        .url-item.safe-item { border-left: 4px solid #28a745; }
+        .url-item:hover { background: var(--bg-card-hover); }
+        .url-item.threat-item { border-left: 3px solid var(--red);   background: rgba(239,68,68,0.04); }
+        .url-item.safe-item   { border-left: 3px solid var(--green); }
 
-        .url-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 5px; }
-        .url-text { font-family: monospace; font-size: 0.82rem; word-break: break-all; color: #333; flex: 1; }
+        .url-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+        .url-text { font-family: var(--font-mono); font-size: 0.78rem; word-break: break-all; color: var(--text-primary); flex: 1; }
         .url-badges { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
-        .badge-https { background: #17a2b8; color: white; }
-        .badge-http { background: #28a745; color: white; }
-        .badge-benign { background: #d4edda; color: #155724; }
-        .badge-ddos { background: #f8d7da; color: #721c24; }
-        .badge-fraud { background: #fff3cd; color: #856404; }
-        .badge-phishing { background: #fce4ec; color: #880e4f; }
-        .badge-ransomware { background: #ffebee; color: #b71c1c; border: 1px solid #f5c6cb; }
-        .badge-unknown { background: #e9ecef; color: #495057; }
+        .badge {
+            display: inline-block; padding: 2px 8px;
+            border-radius: 12px; font-size: 10px; font-weight: 700;
+            font-family: var(--font-mono); letter-spacing: 0.3px;
+            border: 1px solid transparent;
+        }
+        .badge-https      { background: var(--cyan-dim);   color: var(--cyan);   border-color: rgba(0,212,255,0.25); }
+        .badge-http       { background: var(--green-dim);  color: var(--green);  border-color: rgba(16,185,129,0.25); }
+        .badge-benign     { background: var(--green-dim);  color: var(--green);  border-color: rgba(16,185,129,0.25); }
+        .badge-ddos       { background: var(--red-dim);    color: var(--red);    border-color: rgba(239,68,68,0.25); }
+        .badge-fraud      { background: var(--orange-dim); color: var(--orange); border-color: rgba(245,158,11,0.25); }
+        .badge-phishing   { background: var(--pink-dim);   color: var(--pink);   border-color: rgba(236,72,153,0.25); }
+        .badge-ransomware { background: var(--purple-dim); color: var(--purple); border-color: rgba(168,85,247,0.25); }
+        .badge-unknown    { background: rgba(148,163,184,0.1); color: var(--text-secondary); border-color: var(--border); }
 
-        .conf-bar { height: 4px; border-radius: 2px; margin-top: 4px; background: #e9ecef; }
+        .conf-bar  { height: 3px; border-radius: 2px; margin-top: 6px; background: var(--border); }
         .conf-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
 
-        .url-meta { font-size: 0.72rem; color: #999; margin-top: 4px; display: flex; gap: 10px; }
+        .url-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 5px; display: flex; gap: 14px; font-family: var(--font-mono); }
 
         /* ── LOGS TABLE ── */
-        .logs { background: white; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .logs-header { background: #343a40; color: white; padding: 15px; border-radius: 10px 10px 0 0; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .logs {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .logs-header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 14px 18px;
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
         .table-wrapper { overflow-x: auto; max-height: 500px; overflow-y: auto; }
+        .table-wrapper::-webkit-scrollbar { width: 4px; height: 4px; }
+        .table-wrapper::-webkit-scrollbar-track { background: var(--bg-primary); }
+        .table-wrapper::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 12px; }
-        th { background: #f8f9fa; font-weight: bold; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; z-index: 10; }
-        tr:hover { background: #f5f5f5; }
-        tr.threat-row { background: #fff5f5; }
 
-        .live-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #28a745; margin-right: 5px; animation: pulse 1s infinite; }
+        th {
+            background: var(--bg-primary);
+            color: var(--text-muted);
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: sticky; top: 0; z-index: 10;
+            border-bottom: 1px solid var(--border);
+        }
 
-        .empty-message { text-align: center; padding: 40px; color: #999; }
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
+        tr:hover td { background: var(--bg-card-hover); }
+        tr.threat-row td { background: rgba(239,68,68,0.04); }
 
-        @media (max-width: 768px) {
+        /* ── LIVE INDICATOR ── */
+        .live-indicator {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            margin-right: 6px;
+            animation: pulse 1.2s infinite;
+        }
+
+        .empty-message {
+            text-align: center; padding: 44px 20px;
+            color: var(--text-muted);
+            font-size: 13px; line-height: 1.8;
+        }
+        .empty-message strong { color: var(--text-secondary); }
+        .empty-message small { font-family: var(--font-mono); font-size: 11px; }
+
+        /* ── ANIMATIONS ── */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse {
+            0%   { opacity: 1; transform: scale(1); }
+            50%  { opacity: 0.4; transform: scale(1.3); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 900px) {
             .charts-row { grid-template-columns: 1fr; }
-            .url-top { flex-direction: column; }
+        }
+        @media (max-width: 640px) {
+            .url-top    { flex-direction: column; }
             .url-badges { flex-wrap: wrap; }
+            .header     { flex-direction: column; align-items: flex-start; }
         }
     </style>
 </head>
@@ -176,31 +428,36 @@
 
     <!-- ── HEADER ── -->
     <div class="header">
-        <h1>
-            <span id="liveIndicator" class="live-indicator" style="display:none;"></span>
-            🌐 Web Access Monitor – ML Attack Detection
-        </h1>
-        <p style="color:#666;">Real-time URL capture with RandomForest attack prediction. Configure browser proxy to 127.0.0.1:8080</p>
+        <div class="header-left">
+            <div class="logo-box">WEB</div>
+            <div>
+                <div class="header-title">
+                    <span id="liveIndicator" class="live-indicator" style="display:none;"></span>
+                    Web Access Monitor
+                </div>
+                <div class="header-subtitle">ML Attack Detection &nbsp;|&nbsp; Real-time URL Capture &nbsp;|&nbsp; RandomForest Classifier</div>
+            </div>
+        </div>
         <div class="status-bar">
-            <div id="proxy-status" class="status status-stopped">⏹️ Proxy Stopped</div>
-            <button id="start-proxy-btn" class="btn-start">▶️ Start Proxy</button>
-            <button id="stop-proxy-btn" class="btn-stop" disabled>⏹️ Stop Proxy</button>
-            <button id="clear-btn" class="btn-clear">🗑️ Clear Stats</button>
-            <button class="btn-report" onclick="downloadReport()">📄 Instant Report</button>
+            <div id="proxy-status" class="status status-stopped">PROXY STOPPED</div>
+            <button id="start-proxy-btn" class="btn-start">Start Proxy</button>
+            <button id="stop-proxy-btn" class="btn-stop" disabled>Stop Proxy</button>
+            <button id="clear-btn" class="btn-clear">Clear Stats</button>
+            <button class="btn-report" onclick="downloadReport()">Instant Report</button>
         </div>
     </div>
 
     <!-- ── ML STATUS BANNER ── -->
     <div class="ml-banner">
         <div class="ml-banner-info">
-            <span style="font-size:20px;">🤖</span>
+            <div class="ml-icon-box">ML</div>
             <div>
-                <div style="font-weight:700;color:#333;">ML Model Status</div>
-                <div id="mlStatusText" style="font-size:12px;color:#666;">Loading attack prediction model...</div>
+                <div class="ml-banner-label">ML Model Status</div>
+                <div id="mlStatusText" class="ml-banner-sub">Loading attack prediction model...</div>
             </div>
-            <span id="mlBadge" class="ml-badge heuristic">⏳ Loading</span>
+            <span id="mlBadge" class="ml-badge heuristic">Loading</span>
         </div>
-        <div style="display:flex;gap:15px;font-size:13px;color:#555;">
+        <div class="ml-banner-meta">
             <span>Model: <strong id="modelType">RandomForest</strong></span>
             <span>Classes: <strong>Benign, DDoS, Fraud, Phishing, Ransomware</strong></span>
         </div>
@@ -208,61 +465,61 @@
 
     <!-- ── PROXY INFO ── -->
     <div id="proxy-info" class="proxy-info warning">
-        <strong>📡 Proxy Status:</strong> NOT running. Click "Start Proxy" to begin capture.
-        <br><small>💡 After starting, configure your browser proxy to 127.0.0.1:8080</small>
+        <strong>Proxy Status:</strong> NOT running. Click "Start Proxy" to begin capture.
+        <br><small>After starting, configure your browser proxy to 127.0.0.1:8080</small>
     </div>
 
     <!-- ── STATS GRID ── -->
     <div class="stats-grid">
         <div class="stat-card">
-            <div class="stat-label">📊 Total URLs</div>
+            <div class="stat-label">Total URLs</div>
             <div class="stat-number" id="total-count">0</div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">🔗 Unique Domains</div>
+            <div class="stat-label">Unique Domains</div>
             <div class="stat-number" id="unique-count">0</div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">⚡ Capture Rate</div>
+            <div class="stat-label">Capture Rate</div>
             <div class="stat-number" id="capture-rate">0</div>
-            <div class="stat-label">URLs/min</div>
+            <div class="stat-label">URLs / min</div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">🟢 Benign</div>
+            <div class="stat-label">Benign</div>
             <div class="stat-number success" id="benign-count">0</div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">🔴 Threats</div>
+            <div class="stat-label">Threats</div>
             <div class="stat-number danger" id="threat-count">0</div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">📈 Threat Rate</div>
+            <div class="stat-label">Threat Rate</div>
             <div class="stat-number warning" id="threat-rate">0%</div>
         </div>
     </div>
 
     <!-- ── ML ATTACK BREAKDOWN ── -->
     <div class="ml-panel">
-        <h3>🎯 ML Attack Type Breakdown</h3>
+        <div class="panel-title">ML Attack Type Breakdown</div>
         <div class="attack-types-grid">
             <div class="attack-type-card benign">
-                <span>✅ Benign</span>
+                <span>Benign</span>
                 <span class="attack-count" id="cnt-benign">0</span>
             </div>
             <div class="attack-type-card ddos">
-                <span>💥 DDoS</span>
+                <span>DDoS</span>
                 <span class="attack-count" id="cnt-ddos">0</span>
             </div>
             <div class="attack-type-card fraud">
-                <span>💳 Fraud</span>
+                <span>Fraud</span>
                 <span class="attack-count" id="cnt-fraud">0</span>
             </div>
             <div class="attack-type-card phishing">
-                <span>🎣 Phishing</span>
+                <span>Phishing</span>
                 <span class="attack-count" id="cnt-phishing">0</span>
             </div>
             <div class="attack-type-card ransomware">
-                <span>🔒 Ransomware</span>
+                <span>Ransomware</span>
                 <span class="attack-count" id="cnt-ransomware">0</span>
             </div>
         </div>
@@ -271,11 +528,11 @@
     <!-- ── CHARTS ── -->
     <div class="charts-row">
         <div class="chart-card">
-            <h3>🍩 Traffic Classification</h3>
+            <div class="panel-title">Traffic Classification</div>
             <canvas id="donutChart"></canvas>
         </div>
         <div class="chart-card">
-            <h3>📊 Top Accessed Domains</h3>
+            <div class="panel-title">Top Accessed Domains</div>
             <canvas id="domainChart"></canvas>
         </div>
     </div>
@@ -283,8 +540,8 @@
     <!-- ── REAL-TIME FEED ── -->
     <div class="feed">
         <div class="feed-header">
-            <span>📡 Real-time URL Feed with ML Predictions</span>
-            <span id="feed-count">0 URLs</span>
+            <span>Real-time URL Feed with ML Predictions</span>
+            <span class="feed-count-badge" id="feed-count">0 URLs</span>
         </div>
         <div class="feed-content" id="url-feed">
             <div class="empty-message">
@@ -297,15 +554,15 @@
     <!-- ── LOGS TABLE ── -->
     <div class="logs">
         <div class="logs-header">
-            <span>📋 Complete Capture Logs with Attack Predictions</span>
-            <span id="log-count" style="font-size:12px;background:rgba(255,255,255,0.2);padding:3px 8px;border-radius:10px;">0 records</span>
+            <span>Complete Capture Logs with Attack Predictions</span>
+            <span id="log-count" style="font-family:var(--font-mono);font-size:11px;background:rgba(0,212,255,0.08);color:var(--cyan);border:1px solid rgba(0,212,255,0.2);padding:3px 10px;border-radius:12px;">0 records</span>
         </div>
         <div class="table-wrapper">
             <table>
                 <thead>
                     <tr>
                         <th style="width:140px">Time</th>
-                        <th style="width:70px">Protocol</th>
+                        <th style="width:80px">Protocol</th>
                         <th>URL</th>
                         <th style="width:160px">ML Prediction</th>
                         <th style="width:80px">Risk</th>
@@ -348,14 +605,20 @@
                 labels: ['Benign', 'DDoS', 'Fraud', 'Phishing', 'Ransomware'],
                 datasets: [{
                     data: [0, 0, 0, 0, 0],
-                    backgroundColor: ['#28a745','#dc3545','#ffc107','#e91e63','#f44336'],
-                    borderWidth: 3, borderColor: '#fff'
+                    backgroundColor: ['#10b981','#ef4444','#f59e0b','#ec4899','#a855f7'],
+                    borderWidth: 2,
+                    borderColor: '#111827'
                 }]
             },
             options: {
                 responsive: true, maintainAspectRatio: true,
-                plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
-                cutout: '60%'
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#94a3b8', font: { size: 11, family: 'JetBrains Mono' }, padding: 14 }
+                    }
+                },
+                cutout: '62%'
             }
         });
 
@@ -367,17 +630,25 @@
                 datasets: [{
                     label: 'Access Count',
                     data: [],
-                    backgroundColor: 'rgba(102,126,234,0.7)',
-                    borderColor: '#667eea',
-                    borderWidth: 1
+                    backgroundColor: 'rgba(0,212,255,0.18)',
+                    borderColor: '#00d4ff',
+                    borderWidth: 1,
+                    borderRadius: 4
                 }]
             },
             options: {
                 responsive: true, maintainAspectRatio: true, animation: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    y: { beginAtZero: true },
-                    x: { ticks: { maxRotation: 45, font: { size: 10 } } }
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(30,45,61,0.8)' },
+                        ticks: { color: '#475569', font: { size: 10, family: 'JetBrains Mono' } }
+                    },
+                    x: {
+                        grid: { color: 'rgba(30,45,61,0.8)' },
+                        ticks: { color: '#475569', maxRotation: 45, font: { size: 10, family: 'JetBrains Mono' } }
+                    }
                 }
             }
         });
@@ -421,11 +692,11 @@
         const statusText = document.getElementById('mlStatusText');
         if (data.ml_loaded || data.model_available) {
             badge.className = 'ml-badge active';
-            badge.textContent = '✅ ML Active';
+            badge.textContent = 'ML ACTIVE';
             statusText.textContent = `RandomForest loaded — ${data.threat_count || 0} threats detected so far`;
         } else {
             badge.className = 'ml-badge heuristic';
-            badge.textContent = '⚠️ Heuristic Mode';
+            badge.textContent = 'HEURISTIC MODE';
             statusText.textContent = 'ML model not found — using rule-based detection';
         }
     }
@@ -467,9 +738,9 @@
     }
 
     function getConfidenceColor(conf) {
-        if (conf >= 0.8) return '#28a745';
-        if (conf >= 0.6) return '#ffc107';
-        return '#dc3545';
+        if (conf >= 0.8) return '#10b981';
+        if (conf >= 0.6) return '#f59e0b';
+        return '#ef4444';
     }
 
     function addToFeed(urlData) {
@@ -488,7 +759,7 @@
         const confPercent = (confidence * 100).toFixed(0);
         const confColor   = getConfidenceColor(confidence);
         const badgeClass  = getAttackBadgeClass(attackType);
-        const riskColor   = riskLevel === 'High' ? '#dc3545' : riskLevel === 'Medium' ? '#ffc107' : '#28a745';
+        const riskColor   = riskLevel === 'High' ? '#ef4444' : riskLevel === 'Medium' ? '#f59e0b' : '#10b981';
 
         feedItem.innerHTML = `
             <div class="url-top">
@@ -496,14 +767,14 @@
                 <div class="url-badges">
                     <span class="badge badge-${protocol.toLowerCase()}">${protocol}</span>
                     <span class="badge ${badgeClass}">${escapeHtml(attackType)}</span>
-                    <span style="font-size:11px;font-weight:700;color:${riskColor}">${riskLevel}</span>
+                    <span style="font-size:10px;font-weight:700;color:${riskColor};font-family:var(--font-mono)">${riskLevel}</span>
                 </div>
             </div>
             <div class="conf-bar"><div class="conf-fill" style="width:${confPercent}%;background:${confColor};"></div></div>
             <div class="url-meta">
-                <span>🕐 ${escapeHtml(timestamp)}</span>
-                <span>🌐 ${escapeHtml(domain)}</span>
-                <span>🎯 Confidence: <strong style="color:${confColor}">${confPercent}%</strong></span>
+                <span>${escapeHtml(timestamp)}</span>
+                <span>${escapeHtml(domain)}</span>
+                <span>Confidence: <strong style="color:${confColor}">${confPercent}%</strong></span>
             </div>
         `;
 
@@ -529,18 +800,18 @@
             const attackType = log.attack_type || 'Unknown';
             const risk       = log.risk_level || 'Low';
             const conf       = parseFloat(log.confidence || 0);
-            const riskColor  = risk === 'High' ? '#dc3545' : risk === 'Medium' ? '#ffc107' : '#28a745';
+            const riskColor  = risk === 'High' ? '#ef4444' : risk === 'Medium' ? '#f59e0b' : '#10b981';
             const badgeCls   = getAttackBadgeClass(attackType);
             const ts         = log.timestamp || '';
             const proto      = log.protocol || 'HTTP';
 
             return `<tr class="${isThreat ? 'threat-row' : ''}">
-                <td style="font-size:11px;">${escapeHtml(ts)}</td>
+                <td style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted)">${escapeHtml(ts)}</td>
                 <td><span class="badge badge-${proto.toLowerCase()}">${proto}</span></td>
-                <td style="word-break:break-all;max-width:300px;font-size:11px;">${escapeHtml(log.url || '')}</td>
+                <td style="word-break:break-all;max-width:300px;font-size:11px;font-family:var(--font-mono)">${escapeHtml(log.url || '')}</td>
                 <td><span class="badge ${badgeCls}">${escapeHtml(attackType)}</span></td>
-                <td style="color:${riskColor};font-weight:700;font-size:12px;">${risk}</td>
-                <td style="font-size:12px;">${(conf * 100).toFixed(0)}%</td>
+                <td style="color:${riskColor};font-weight:700;font-size:12px;font-family:var(--font-mono)">${risk}</td>
+                <td style="font-size:12px;font-family:var(--font-mono);color:var(--text-secondary)">${(conf * 100).toFixed(0)}%</td>
             </tr>`;
         }).join('');
     }
@@ -555,17 +826,17 @@
         const liveDot  = document.getElementById('liveIndicator');
 
         if (running) {
-            statusEl.innerHTML = '<span class="live-indicator"></span> ✅ Proxy Active :8080';
+            statusEl.innerHTML = '<span class="live-indicator"></span> PROXY ACTIVE :8080';
             statusEl.className = 'status status-started';
             infoEl.className = 'proxy-info success';
-            infoEl.innerHTML = '<strong>📡 Proxy ACTIVE</strong> on port 8080. Configure your browser to proxy 127.0.0.1:8080.';
+            infoEl.innerHTML = '<strong>Proxy ACTIVE</strong> on port 8080. Configure your browser to proxy 127.0.0.1:8080.';
             startBtn.disabled = true; stopBtn.disabled = false;
             liveDot.style.display = 'inline-block';
         } else {
-            statusEl.innerHTML = '⏹️ Proxy Stopped';
+            statusEl.innerHTML = 'PROXY STOPPED';
             statusEl.className = 'status status-stopped';
             infoEl.className = 'proxy-info warning';
-            infoEl.innerHTML = '<strong>📡 Proxy NOT running.</strong> Click "Start Proxy" to begin capture.<br><small>💡 After starting, configure browser proxy to 127.0.0.1:8080</small>';
+            infoEl.innerHTML = '<strong>Proxy NOT running.</strong> Click "Start Proxy" to begin capture.<br><small>After starting, configure browser proxy to 127.0.0.1:8080</small>';
             startBtn.disabled = false; stopBtn.disabled = true;
             liveDot.style.display = 'none';
         }
@@ -573,7 +844,6 @@
 
     // ── Report Download ────────────────────────────────────────────────────────
     async function downloadReport() {
-        // Try to use the server-side report endpoint first
         try {
             const res = await fetch('/api/report/download');
             if (res.ok) {
@@ -588,7 +858,6 @@
             }
         } catch(e) {}
 
-        // Fallback: generate client-side
         generateClientReport();
     }
 
@@ -618,7 +887,7 @@
                 <td>${escapeHtml(u.timestamp||'').substring(0,19)}</td>
                 <td style="word-break:break-all;max-width:250px;font-size:11px;">${escapeHtml(u.url||'')}</td>
                 <td>${u.protocol||''}</td>
-                <td style="color:${isThreat?'#dc3545':'#28a745'};font-weight:${isThreat?'bold':'normal'}">${escapeHtml(u.attack_type||'Unknown')}</td>
+                <td style="color:${isThreat?'#ef4444':'#10b981'};font-weight:${isThreat?'bold':'normal'}">${escapeHtml(u.attack_type||'Unknown')}</td>
                 <td>${u.risk_level||'Low'}</td>
                 <td>${conf}%</td>
             </tr>`;
@@ -629,23 +898,23 @@
 <title>Web Access Security Report – ${fmtDate}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',sans-serif;background:#0c1a2e;color:#e2e8f0;padding:32px}
+body{font-family:'Segoe UI',sans-serif;background:#080d14;color:#e2e8f0;padding:32px}
 h1{font-size:28px;color:#ec4899;margin-bottom:4px}
-.subtitle{color:#64748b;margin-bottom:28px;font-size:14px}
+.subtitle{color:#475569;margin-bottom:28px;font-size:14px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:28px}
-.card{background:#112240;border-radius:10px;padding:20px;border:1px solid #1e3a5f}
-.card h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:8px}
-.card .val{font-size:28px;font-weight:700;color:#ec4899}
-.card.danger .val{color:#f87171}.card.good .val{color:#34d399}.card.warn .val{color:#fb923c}
+.card{background:#111827;border-radius:10px;padding:20px;border:1px solid #1e2d3d}
+.card h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#475569;margin-bottom:8px}
+.card .val{font-size:28px;font-weight:700;color:#00d4ff;font-family:monospace}
+.card.danger .val{color:#ef4444}.card.good .val{color:#10b981}.card.warn .val{color:#f59e0b}
 section{margin-bottom:28px}
-section h2{font-size:16px;color:#94a3b8;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1e3a5f}
+section h2{font-size:16px;color:#94a3b8;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1e2d3d}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px}
 table{width:100%;border-collapse:collapse;font-size:12px}
-th{background:#0d1f3c;color:#64748b;padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase}
-td{padding:9px 12px;border-bottom:1px solid #0a1628}
-tr.threat td{background:#7f1d1d20}
+th{background:#0d1421;color:#475569;padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase}
+td{padding:9px 12px;border-bottom:1px solid #0a1628;color:#94a3b8}
+tr.threat td{background:rgba(239,68,68,0.06)}
 </style></head><body>
-<h1>🌐 Web Access Security Report</h1>
+<h1>Web Access Security Report</h1>
 <p class="subtitle">Generated: ${fmtDate} &nbsp;|&nbsp; Model: RandomForest Classifier</p>
 
 <div class="grid">
@@ -659,18 +928,18 @@ tr.threat td{background:#7f1d1d20}
 <div class="two-col">
   <section><h2>Attack Type Breakdown</h2>
   <table><tr><th>Attack Type</th><th>Count</th><th>%</th></tr>
-  ${attackRows || '<tr><td colspan=3 style="color:#64748b">No threats detected</td></tr>'}
+  ${attackRows || '<tr><td colspan=3 style="color:#475569">No threats detected</td></tr>'}
   </table></section>
   <section><h2>Top Accessed Domains</h2>
   <table><tr><th>Domain</th><th>Visits</th></tr>
-  ${domainRows || '<tr><td colspan=2 style="color:#64748b">No data</td></tr>'}
+  ${domainRows || '<tr><td colspan=2 style="color:#475569">No data</td></tr>'}
   </table></section>
 </div>
 
 <section><h2>URL Access Log (last 60)</h2>
 <table>
 <tr><th>Time</th><th>URL</th><th>Protocol</th><th>Prediction</th><th>Risk</th><th>Confidence</th></tr>
-${urlRows || '<tr><td colspan=6 style="color:#64748b;text-align:center;padding:20px">No URLs captured yet</td></tr>'}
+${urlRows || '<tr><td colspan=6 style="color:#475569;text-align:center;padding:20px">No URLs captured yet</td></tr>'}
 </table></section>
 
 <p style="color:#475569;font-size:12px;margin-top:24px;text-align:center">

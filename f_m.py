@@ -475,7 +475,7 @@ class MouseTracker:
         elif event['type'] == 'click':
             current_stats['mouse_clicks'] += 1
 
-        current_stats['total_mouse_events']  = len(mouse_movements)
+        current_stats['total_mouse_events'] += 1
         current_stats['mouse_anomaly_score'] = float(anomaly_score)
         if anomaly_score > 0.5:
             current_stats['mouse_anomalies'] += 1
@@ -641,7 +641,7 @@ class FileMonitor:
         if len(file_events) > 500:
             file_events.pop(0)
 
-        current_stats['total_file_events'] = len(file_events)
+        current_stats['total_file_events'] += 1
         current_stats['file_operations'][event['type']] = (
             current_stats['file_operations'].get(event['type'], 0) + 1)
         current_stats['file_anomaly_score'] = float(anomaly_score)

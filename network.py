@@ -6,6 +6,7 @@ ADDED: ML Packet Anomaly Detection (statistical engine) with live Socket.IO emis
 
 import os
 import sys
+import io
 import time
 import threading
 import queue
@@ -16,6 +17,10 @@ from datetime import datetime
 from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO, emit
 import psutil
+
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 
 # ─── Admin check ─────────────────────────────────────────────────────────────
@@ -78,13 +83,15 @@ def _import_scapy():
                                for k in ('loopback','virtual','bluetooth'))
                     and i.get('name') and i.get('name') != 'none']
             NETWORK_INTERFACES = real
-            if real and is_admin():
-                REAL_CAPTURE_AVAILABLE = True
-                print(f"✓ Found {len(real)} interfaces — REAL CAPTURE enabled")
+            if real:
+                print(f"✓ Found {len(real)} preferred interfaces (after basic filter)")
                 for iface in real[:5]:
                     print(f"    - {iface.get('name','?')}: {iface.get('description','')}")
+            elif ifaces_raw:
+                print(f"⚠️  Filter removed all {len(ifaces_raw)} interfaces — "
+                      f"dropdown will still list adapters when admin+Scapy")
             else:
-                print(f"⚠️  {len(real)} interfaces found but real capture requires admin")
+                print("⚠️  No interfaces enumerated by Scapy")
         except Exception as e:
             print(f"⚠️  Could not enumerate interfaces: {e}")
     except ImportError as e:
@@ -100,18 +107,25 @@ _scapy_thread = threading.Thread(target=_import_scapy, daemon=True, name="ScapyI
 _scapy_thread.start()
 _scapy_ready.wait(timeout=10)
 
+# Real capture = Scapy loaded + elevated process. Do NOT require the filtered
+# interface list to be non-empty (Hyper-V/WSL adapters often get filtered out).
+REAL_CAPTURE_AVAILABLE = bool(SCAPY_AVAILABLE and is_admin())
+
 if not SCAPY_AVAILABLE:
-    print("\n⚠️  Running in SIMULATION MODE (Scapy unavailable or timed-out)")
+    print("\n⚠️  Scapy unavailable — run as Administrator with Npcap for live capture")
 else:
     if REAL_CAPTURE_AVAILABLE:
-        print("\n✅ REAL CAPTURE MODE ENABLED!")
+        print("\n✅ REAL CAPTURE ENABLED (admin + Scapy — live sniff when you press Start)")
     else:
-        print("\n⚠️  Scapy loaded but running in SIMULATION MODE (no admin)")
+        print("\n⚠️  Scapy loaded — start this app as Administrator for live capture (not dummy data)")
 
 print("\n" + "=" * 70)
 print("🚀 STARTING NETWORK FLOW MONITOR")
-print(f"🎯 Mode: {'REAL CAPTURE' if REAL_CAPTURE_AVAILABLE else 'SIMULATION MODE'}")
+print(f"🎯 Mode: {'REAL CAPTURE' if REAL_CAPTURE_AVAILABLE else 'REQUIRES ADMINISTRATOR'}")
 print("=" * 70 + "\n")
+
+# ─── Base directory (absolute path of this file's folder) ────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ─── Flask / SocketIO ─────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -159,8 +173,12 @@ class PacketAnomalyDetector:
     No external model file required — runs entirely in-process.
     """
 
-    ATTACK_LABELS = ['Benign', 'DoS/DDoS', 'Port Scan',
-                     'Brute Force', 'Bot Activity', 'Infiltration']
+    # Priority 4: aligned with CIC-IDS-2017 label space
+    ATTACK_LABELS = ['BENIGN', 'DDoS', 'PortScan', 'SSH-Patator', 'FTP-Patator',
+                     'Bot', 'Infiltration', 'DoS Hulk', 'DoS GoldenEye',
+                     'DoS slowloris', 'DoS Slowhttptest', 'Heartbleed',
+                     'Web Attack - Brute Force', 'Web Attack - XSS',
+                     'Web Attack - Sql Injection']
 
     # Ports commonly used by bots / RATs / C2
     SUSPICIOUS_PORTS = {4444, 1337, 31337, 6666, 6667, 12345, 9999, 8888, 7777}
@@ -239,16 +257,17 @@ class PacketAnomalyDetector:
             confidence = 0.94
             is_threat  = False
 
+            # Priority 4: labels match CIC-IDS-2017 label space
             if n_ports >= 20:
-                attack, confidence, is_threat = 'Port Scan',   0.83, True
+                attack, confidence, is_threat = 'PortScan',    0.83, True
             elif n_pkts >= 300:
-                attack, confidence, is_threat = 'DoS/DDoS',    0.88, True
+                attack, confidence, is_threat = 'DDoS',        0.88, True
             elif dst_port in self.SUSPICIOUS_PORTS:
-                attack, confidence, is_threat = 'Bot Activity', 0.77, True
+                attack, confidence, is_threat = 'Bot',         0.77, True
             elif dst_port in self.BRUTE_PORTS and n_pkts >= 25:
-                attack, confidence, is_threat = 'Brute Force',  0.72, True
+                attack, confidence, is_threat = 'SSH-Patator', 0.72, True
             elif protocol == 'UDP' and size > 1200 and n_pkts >= 40:
-                attack, confidence, is_threat = 'DoS/DDoS',    0.69, True
+                attack, confidence, is_threat = 'DDoS',        0.69, True
             elif n_pkts >= 150 and protocol in ('TCP', 'UDP'):
                 attack, confidence, is_threat = 'Infiltration', 0.65, True
 
@@ -291,7 +310,9 @@ class PacketAnomalyDetector:
                 'total':            self._total,
                 'avg_confidence':   round(avg_conf, 4),
                 'attack_breakdown': dict(self._breakdown),
-                'models_loaded':    True,
+                'models_loaded':    globals().get('network_ml_model', type('_F', (), {'loaded': False})).loaded,
+                'model_type':       (globals()['network_ml_model'].model_type or 'heuristic')
+                                    if 'network_ml_model' in globals() else 'heuristic',
             }
 
     def reset(self):
@@ -309,6 +330,564 @@ class PacketAnomalyDetector:
 
 ml_anomaly_detector = PacketAnomalyDetector()
 print("✅ ML Anomaly Detector initialised (statistical engine)")
+
+
+# ─── Priority 1: Flow Aggregator (CIC-IDS-2017/2018 feature space) ────────────
+class FlowRecord:
+    """Bidirectional flow record — accumulates per-packet info."""
+    __slots__ = [
+        'src_ip','dst_ip','src_port','dst_port','protocol',
+        'start_time','last_time','prev_pkt_time',
+        'fwd_lens','bwd_lens',
+        'fwd_iats','bwd_iats','flow_iats',
+        'fwd_flags','bwd_flags',
+        'fwd_header_len','bwd_header_len',
+        'init_fwd_win','init_bwd_win',
+        'fwd_act_data_pkts','fwd_seg_size_min',
+        'active_start','active_periods','idle_periods',
+        'fin_seen','rst_seen',
+    ]
+
+    def __init__(self, src_ip, dst_ip, src_port, dst_port, protocol, t):
+        self.src_ip, self.dst_ip = src_ip, dst_ip
+        self.src_port, self.dst_port = src_port, dst_port
+        self.protocol = protocol
+        self.start_time = self.last_time = self.prev_pkt_time = t
+        self.fwd_lens, self.bwd_lens = [], []
+        self.fwd_iats, self.bwd_iats, self.flow_iats = [], [], []
+        _f = {'FIN':0,'SYN':0,'RST':0,'PSH':0,'ACK':0,'URG':0,'CWE':0,'ECE':0}
+        self.fwd_flags = dict(_f)
+        self.bwd_flags = dict(_f)
+        self.fwd_header_len = self.bwd_header_len = 0
+        self.init_fwd_win = self.init_bwd_win = -1
+        self.fwd_act_data_pkts = 0
+        self.fwd_seg_size_min = float('inf')
+        self.active_start = t
+        self.active_periods, self.idle_periods = [], []
+        self.fin_seen = self.rst_seen = False
+
+
+class FlowAggregator:
+    """
+    Aggregates raw Scapy packets into bidirectional flows and computes
+    the CIC-IDS-2017/2018 feature set so a trained model can be called
+    with the correct input dimensions.
+
+    Flow key: canonical (lo_ip, hi_ip, lo_port, hi_port, protocol).
+    Direction: forward = src_ip < dst_ip (or first-seen direction).
+    Flows expire after IDLE_TIMEOUT seconds of inactivity or on FIN/RST.
+    """
+
+    IDLE_TIMEOUT   = 120     # seconds of inactivity before a flow is expired
+    ACTIVE_TIMEOUT = 5       # seconds of continuous activity = one active period
+
+    def __init__(self):
+        self._flows   = {}            # key → FlowRecord
+        self._lock    = threading.Lock()
+        self._completed = []          # list of feature dicts ready for ML
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+    @staticmethod
+    def _safe_mean(lst):
+        return sum(lst)/len(lst) if lst else 0.0
+
+    @staticmethod
+    def _safe_std(lst):
+        if len(lst) < 2:
+            return 0.0
+        m = sum(lst)/len(lst)
+        var = sum((x-m)**2 for x in lst) / (len(lst)-1)
+        return var**0.5
+
+    @staticmethod
+    def _safe_var(lst):
+        if len(lst) < 2:
+            return 0.0
+        m = sum(lst)/len(lst)
+        return sum((x-m)**2 for x in lst) / (len(lst)-1)
+
+    def _flow_key(self, src_ip, dst_ip, src_port, dst_port, proto):
+        if (src_ip, src_port) <= (dst_ip, dst_port):
+            return (src_ip, dst_ip, src_port, dst_port, proto)
+        return (dst_ip, src_ip, dst_port, src_port, proto)
+
+    def _is_forward(self, src_ip, src_port, key):
+        return src_ip == key[0] and src_port == key[2]
+
+    # ── Feature extraction (CIC-IDS feature columns) ──────────────────────────
+    def _extract(self, r):
+        all_lens = r.fwd_lens + r.bwd_lens
+        duration  = max(r.last_time - r.start_time, 1e-6)
+
+        fwd_iat_mean = self._safe_mean(r.fwd_iats)
+        fwd_iat_std  = self._safe_std(r.fwd_iats)
+        fwd_iat_max  = max(r.fwd_iats) if r.fwd_iats else 0
+        fwd_iat_min  = min(r.fwd_iats) if r.fwd_iats else 0
+
+        bwd_iat_mean = self._safe_mean(r.bwd_iats)
+        bwd_iat_std  = self._safe_std(r.bwd_iats)
+        bwd_iat_max  = max(r.bwd_iats) if r.bwd_iats else 0
+        bwd_iat_min  = min(r.bwd_iats) if r.bwd_iats else 0
+
+        flow_iat_mean = self._safe_mean(r.flow_iats)
+        flow_iat_std  = self._safe_std(r.flow_iats)
+        flow_iat_max  = max(r.flow_iats) if r.flow_iats else 0
+        flow_iat_min  = min(r.flow_iats) if r.flow_iats else 0
+
+        pkt_len_mean = self._safe_mean(all_lens)
+        pkt_len_std  = self._safe_std(all_lens)
+        pkt_len_var  = self._safe_var(all_lens)
+
+        bwd_len_mean = self._safe_mean(r.bwd_lens)
+        bwd_len_std  = self._safe_std(r.bwd_lens)
+
+        fwd_len_mean = self._safe_mean(r.fwd_lens)
+
+        idle_mean = self._safe_mean(r.idle_periods)
+        idle_std  = self._safe_std(r.idle_periods)
+        idle_max  = max(r.idle_periods) if r.idle_periods else 0
+        idle_min  = min(r.idle_periods) if r.idle_periods else 0
+
+        active_mean = self._safe_mean(r.active_periods)
+        active_std  = self._safe_std(r.active_periods)
+        active_max  = max(r.active_periods) if r.active_periods else 0
+        active_min  = min(r.active_periods) if r.active_periods else 0
+
+        tot_pkts = len(r.fwd_lens) + len(r.bwd_lens)
+
+        return {
+            # Core CIC-IDS-2017 columns (79 features minus Label)
+            'Dst Port':                r.dst_port,
+            'Protocol':                r.protocol,
+            'Flow Duration':           duration * 1e6,          # microseconds like dataset
+            'Tot Fwd Pkts':            len(r.fwd_lens),
+            'Tot Bwd Pkts':            len(r.bwd_lens),
+            'TotLen Fwd Pkts':         sum(r.fwd_lens),
+            'TotLen Bwd Pkts':         sum(r.bwd_lens),
+            'Fwd Pkt Len Max':         max(r.fwd_lens) if r.fwd_lens else 0,
+            'Fwd Pkt Len Min':         min(r.fwd_lens) if r.fwd_lens else 0,
+            'Fwd Pkt Len Mean':        fwd_len_mean,
+            'Fwd Pkt Len Std':         self._safe_std(r.fwd_lens),
+            'Bwd Pkt Len Max':         max(r.bwd_lens) if r.bwd_lens else 0,
+            'Bwd Pkt Len Min':         min(r.bwd_lens) if r.bwd_lens else 0,
+            'Bwd Pkt Len Mean':        bwd_len_mean,
+            'Bwd Pkt Len Std':         bwd_len_std,
+            'Flow Byts/s':             sum(all_lens) / duration,
+            'Flow Pkts/s':             tot_pkts / duration,
+            'Flow IAT Mean':           flow_iat_mean,
+            'Flow IAT Std':            flow_iat_std,
+            'Flow IAT Max':            flow_iat_max,
+            'Flow IAT Min':            flow_iat_min,
+            'Fwd IAT Tot':             sum(r.fwd_iats),
+            'Fwd IAT Mean':            fwd_iat_mean,
+            'Fwd IAT Std':             fwd_iat_std,
+            'Fwd IAT Max':             fwd_iat_max,
+            'Fwd IAT Min':             fwd_iat_min,
+            'Bwd IAT Tot':             sum(r.bwd_iats),
+            'Bwd IAT Mean':            bwd_iat_mean,
+            'Bwd IAT Std':             bwd_iat_std,
+            'Bwd IAT Max':             bwd_iat_max,
+            'Bwd IAT Min':             bwd_iat_min,
+            'Fwd PSH Flags':           r.fwd_flags['PSH'],
+            'Bwd PSH Flags':           r.bwd_flags['PSH'],
+            'Fwd URG Flags':           r.fwd_flags['URG'],
+            'Bwd URG Flags':           r.bwd_flags['URG'],
+            'Fwd Header Len':          r.fwd_header_len,
+            'Bwd Header Len':          r.bwd_header_len,
+            'Fwd Pkts/s':              len(r.fwd_lens) / duration,
+            'Bwd Pkts/s':              len(r.bwd_lens) / duration,
+            'Pkt Len Min':             min(all_lens) if all_lens else 0,
+            'Pkt Len Max':             max(all_lens) if all_lens else 0,
+            'Pkt Len Mean':            pkt_len_mean,
+            'Pkt Len Std':             pkt_len_std,
+            'Pkt Len Var':             pkt_len_var,
+            'FIN Flag Cnt':            r.fwd_flags['FIN'] + r.bwd_flags['FIN'],
+            'SYN Flag Cnt':            r.fwd_flags['SYN'] + r.bwd_flags['SYN'],
+            'RST Flag Cnt':            r.fwd_flags['RST'] + r.bwd_flags['RST'],
+            'PSH Flag Cnt':            r.fwd_flags['PSH'] + r.bwd_flags['PSH'],
+            'ACK Flag Cnt':            r.fwd_flags['ACK'] + r.bwd_flags['ACK'],
+            'URG Flag Cnt':            r.fwd_flags['URG'] + r.bwd_flags['URG'],
+            'CWE Flag Count':          r.fwd_flags['CWE'] + r.bwd_flags['CWE'],
+            'ECE Flag Cnt':            r.fwd_flags['ECE'] + r.bwd_flags['ECE'],
+            'Down/Up Ratio':           len(r.bwd_lens) / max(len(r.fwd_lens), 1),
+            'Pkt Size Avg':            pkt_len_mean,
+            'Fwd Seg Size Avg':        fwd_len_mean,
+            'Bwd Seg Size Avg':        bwd_len_mean,
+            'Fwd Byts/b Avg':          0,    # bulk rate — requires deep inspection
+            'Fwd Pkts/b Avg':          0,
+            'Fwd Blk Rate Avg':        0,
+            'Bwd Byts/b Avg':          0,
+            'Bwd Pkts/b Avg':          0,
+            'Bwd Blk Rate Avg':        0,
+            'Subflow Fwd Pkts':        len(r.fwd_lens),
+            'Subflow Fwd Byts':        sum(r.fwd_lens),
+            'Subflow Bwd Pkts':        len(r.bwd_lens),
+            'Subflow Bwd Byts':        sum(r.bwd_lens),
+            'Init Fwd Win Byts':       r.init_fwd_win,
+            'Init Bwd Win Byts':       r.init_bwd_win,
+            'Fwd Act Data Pkts':       r.fwd_act_data_pkts,
+            'Fwd Seg Size Min':        r.fwd_seg_size_min if r.fwd_seg_size_min != float('inf') else 0,
+            'Active Mean':             active_mean,
+            'Active Std':              active_std,
+            'Active Max':              active_max,
+            'Active Min':              active_min,
+            'Idle Mean':               idle_mean,
+            'Idle Std':                idle_std,
+            'Idle Max':                idle_max,
+            'Idle Min':                idle_min,
+            # Metadata (not fed to model)
+            '_src': r.src_ip, '_dst': r.dst_ip,
+            '_src_port': r.src_port, '_dst_port': r.dst_port,
+        }
+
+    # ── Public API ─────────────────────────────────────────────────────────────
+    def add_packet(self, src_ip, dst_ip, src_port, dst_port, proto,
+                   size, flags=None, header_len=0, win_size=-1):
+        """Record one packet. Thread-safe. Single lock acquisition."""
+        t = time.time()
+        key = self._flow_key(src_ip, dst_ip, src_port, dst_port, proto)
+        flags = flags or {}
+
+        with self._lock:
+            if key not in self._flows:
+                r = FlowRecord(src_ip, dst_ip, src_port, dst_port, proto, t)
+                self._flows[key] = r
+            else:
+                r = self._flows[key]
+
+            is_fwd = self._is_forward(src_ip, src_port, key)
+
+            # IAT in microseconds (skip first packet — IAT undefined for it)
+            iat_us = (t - r.prev_pkt_time) * 1e6
+            r.flow_iats.append(iat_us)
+            if is_fwd:
+                r.fwd_iats.append(iat_us)
+            else:
+                r.bwd_iats.append(iat_us)
+
+            # Active / idle periods
+            if iat_us > self.ACTIVE_TIMEOUT * 1e6:
+                r.idle_periods.append(iat_us)
+                r.active_periods.append((r.prev_pkt_time - r.active_start) * 1e6)
+                r.active_start = t
+            r.prev_pkt_time = t
+            r.last_time = t
+
+            # Packet lengths
+            if is_fwd:
+                r.fwd_lens.append(size)
+                r.fwd_header_len += header_len
+                if win_size >= 0 and r.init_fwd_win < 0:
+                    r.init_fwd_win = win_size
+                # Only count as data packet if it carries payload beyond the header
+                payload = size - header_len
+                if payload > 0:
+                    r.fwd_act_data_pkts += 1
+                if header_len > 0:
+                    r.fwd_seg_size_min = min(r.fwd_seg_size_min, header_len)
+            else:
+                r.bwd_lens.append(size)
+                r.bwd_header_len += header_len
+                if win_size >= 0 and r.init_bwd_win < 0:
+                    r.init_bwd_win = win_size
+
+            # TCP flags
+            fdict = r.fwd_flags if is_fwd else r.bwd_flags
+            for flag in ('FIN','SYN','RST','PSH','ACK','URG','CWE','ECE'):
+                if flags.get(flag):
+                    fdict[flag] += 1
+
+            # Terminate flow on FIN or RST — extract inside the same lock block
+            if flags.get('FIN'):
+                r.fin_seen = True
+            if flags.get('RST'):
+                r.rst_seen = True
+            if r.fin_seen or r.rst_seen:
+                self._completed.append(self._extract(r))
+                del self._flows[key]
+
+    def expire_old_flows(self):
+        """Expire flows that have been idle > IDLE_TIMEOUT. Call periodically."""
+        cutoff = time.time() - self.IDLE_TIMEOUT
+        expired = []
+        with self._lock:
+            to_del = [k for k, r in self._flows.items() if r.last_time < cutoff]
+            for k in to_del:
+                expired.append(self._extract(self._flows[k]))
+                del self._flows[k]
+            self._completed.extend(expired)
+
+    def drain_completed(self):
+        """Return and clear all completed flow feature dicts."""
+        with self._lock:
+            out = list(self._completed)
+            self._completed.clear()
+        return out
+
+    def reset(self):
+        with self._lock:
+            self._flows.clear()
+            self._completed.clear()
+
+
+flow_aggregator = FlowAggregator()
+print("✅ Flow Aggregator initialised (CIC-IDS feature engine)")
+
+
+# ─── Priority 2: NetworkMLModel — load trained Keras / sklearn model ──────────
+class NetworkMLModel:
+    """
+    Loads a trained classifier from disk (network/model.keras or network/classifier.pkl).
+    If no model file is found, falls back to the flow-aware rule heuristics.
+
+    Expected model input: the 78 numeric CIC-IDS-2017 feature columns
+    (all columns from the dataset except 'Label', in the same order they
+    were passed to StandardScaler during training).
+    """
+
+    # CIC-IDS-2017 label index → friendly name (matches gan-1.ipynb label_mapping)
+    # Ordered by label_mapping index (0–14)
+    CIC_LABELS = [
+        'BENIGN', 'DDoS', 'PortScan', 'Bot', 'Infiltration',
+        'Web Attack - Brute Force', 'Web Attack - XSS',
+        'Web Attack - Sql Injection', 'FTP-Patator', 'SSH-Patator',
+        'DoS slowloris', 'DoS Slowhttptest', 'DoS Hulk',
+        'DoS GoldenEye', 'Heartbleed',
+    ]
+
+    # Labels that are threats (all except BENIGN)
+    THREAT_LABELS = set(CIC_LABELS) - {'BENIGN'}
+
+    # Map CIC label → friendly UI label for dashboard
+    UI_LABEL_MAP = {
+        'BENIGN':                    'Benign',
+        'DDoS':                      'DoS/DDoS',
+        'DoS Hulk':                  'DoS/DDoS',
+        'DoS GoldenEye':             'DoS/DDoS',
+        'DoS slowloris':             'DoS/DDoS',
+        'DoS Slowhttptest':          'DoS/DDoS',
+        'PortScan':                  'PortScan',
+        'Bot':                       'Bot Activity',
+        'Infiltration':              'Infiltration',
+        'FTP-Patator':               'Brute Force',
+        'SSH-Patator':               'Brute Force',
+        'Web Attack - Brute Force':  'Brute Force',
+        'Web Attack - XSS':          'XSS',
+        'Web Attack - Sql Injection':'SQLi',
+        'Heartbleed':                'Heartbleed',
+    }
+
+    # Feature columns in EXACT CIC-IDS-2017 training order (78 numeric cols, no Label).
+    # Matches the column order produced by CICFlowMeter for the ISCX 2017 dataset files.
+    # NOTE: 'Protocol' is NOT in CIC-IDS-2017 (it is in CIC-IDS-2018 only).
+    # Position 55 ('Fwd Header Len') is the 'Fwd Header Length.1' duplicate that the
+    # dataset exports — keep it so the vector aligns with the saved scaler/model weights.
+    FEATURE_COLS = [
+        'Dst Port',                                                    # col  0
+        'Flow Duration',                                               # col  1
+        'Tot Fwd Pkts','Tot Bwd Pkts',                                 # col  2-3
+        'TotLen Fwd Pkts','TotLen Bwd Pkts',                          # col  4-5
+        'Fwd Pkt Len Max','Fwd Pkt Len Min',                          # col  6-7
+        'Fwd Pkt Len Mean','Fwd Pkt Len Std',                         # col  8-9
+        'Bwd Pkt Len Max','Bwd Pkt Len Min',                          # col 10-11
+        'Bwd Pkt Len Mean','Bwd Pkt Len Std',                         # col 12-13
+        'Flow Byts/s','Flow Pkts/s',                                  # col 14-15
+        'Flow IAT Mean','Flow IAT Std','Flow IAT Max','Flow IAT Min',  # col 16-19
+        'Fwd IAT Tot','Fwd IAT Mean','Fwd IAT Std',                   # col 20-22
+        'Fwd IAT Max','Fwd IAT Min',                                   # col 23-24
+        'Bwd IAT Tot','Bwd IAT Mean','Bwd IAT Std',                   # col 25-27
+        'Bwd IAT Max','Bwd IAT Min',                                   # col 28-29
+        'Fwd PSH Flags','Bwd PSH Flags',                              # col 30-31
+        'Fwd URG Flags','Bwd URG Flags',                              # col 32-33
+        'Fwd Header Len','Bwd Header Len',                            # col 34-35
+        'Fwd Pkts/s','Bwd Pkts/s',                                   # col 36-37
+        'Pkt Len Min','Pkt Len Max',                                  # col 38-39
+        'Pkt Len Mean','Pkt Len Std','Pkt Len Var',                   # col 40-42
+        'FIN Flag Cnt','SYN Flag Cnt','RST Flag Cnt',                 # col 43-45
+        'PSH Flag Cnt','ACK Flag Cnt','URG Flag Cnt',                 # col 46-48
+        'CWE Flag Count','ECE Flag Cnt',                              # col 49-50
+        'Down/Up Ratio',                                              # col 51
+        'Pkt Size Avg','Fwd Seg Size Avg','Bwd Seg Size Avg',         # col 52-54
+        'Fwd Header Len',   # col 55 — Fwd Header Length.1 (dataset duplicate; same value)
+        'Fwd Byts/b Avg','Fwd Pkts/b Avg','Fwd Blk Rate Avg',        # col 56-58
+        'Bwd Byts/b Avg','Bwd Pkts/b Avg','Bwd Blk Rate Avg',        # col 59-61
+        'Subflow Fwd Pkts','Subflow Fwd Byts',                        # col 62-63
+        'Subflow Bwd Pkts','Subflow Bwd Byts',                        # col 64-65
+        'Init Fwd Win Byts','Init Bwd Win Byts',                      # col 66-67
+        'Fwd Act Data Pkts','Fwd Seg Size Min',                       # col 68-69
+        'Active Mean','Active Std','Active Max','Active Min',          # col 70-73
+        'Idle Mean','Idle Std','Idle Max','Idle Min',                  # col 74-77
+    ]
+
+    def __init__(self):
+        self.model         = None
+        self.label_encoder = None
+        self.scaler        = None
+        self.model_type    = None   # 'keras' | 'sklearn' | None
+        self.loaded        = False
+        self._load()
+
+    def _load(self):
+        base = os.path.join(BASE_DIR, 'network')
+        keras_path   = os.path.join(base, 'model.keras')
+        sklearn_path = os.path.join(base, 'classifier.pkl')
+        encoder_path = os.path.join(base, 'label_encoder.pkl')
+        scaler_path  = os.path.join(base, 'scaler.pkl')
+
+        try:
+            import joblib  # noqa: F401
+        except ImportError:
+            try:
+                import pickle as joblib  # noqa: F401
+            except ImportError:
+                pass
+
+        try:
+            if os.path.exists(keras_path):
+                from tensorflow.keras.models import load_model as _lm  # type: ignore
+                self.model     = _lm(keras_path)
+                self.model_type = 'keras'
+                print(f"✅ Network ML model loaded: {keras_path}")
+            elif os.path.exists(sklearn_path):
+                import joblib
+                self.model      = joblib.load(sklearn_path)
+                self.model_type = 'sklearn'
+                print(f"✅ Network sklearn classifier loaded: {sklearn_path}")
+            else:
+                print("⚠️  No trained model found in network/ — flow heuristics active")
+                print(f"   Place model.keras (Keras) or classifier.pkl (sklearn) + label_encoder.pkl "
+                      f"in:\n   {base}")
+                return
+
+            if os.path.exists(encoder_path):
+                import joblib
+                self.label_encoder = joblib.load(encoder_path)
+                print(f"✅ Label encoder loaded")
+
+            if os.path.exists(scaler_path):
+                import joblib
+                self.scaler = joblib.load(scaler_path)
+                print(f"✅ Scaler loaded")
+
+            self.loaded = True
+
+        except Exception as e:
+            print(f"⚠️  Model load error: {e} — flow heuristics active")
+
+    def _feature_vector(self, feat_dict):
+        """Convert feature dict → numpy array in FEATURE_COLS order."""
+        import numpy as np  # noqa: F811
+        row = []
+        for col in self.FEATURE_COLS:
+            v = feat_dict.get(col, 0)
+            try:
+                v = float(v)
+            except Exception:
+                v = 0.0
+            if not (v == v):   # NaN
+                v = 0.0
+            if v == float('inf') or v == float('-inf'):
+                v = 0.0
+            row.append(v)
+        return row
+
+    def predict_flow(self, feat_dict):
+        """
+        Run model inference on a completed flow feature dict.
+        Returns (ui_label, confidence, is_threat).
+        Falls back to flow-based heuristics if no model.
+        """
+        # ── Model path ────────────────────────────────────────────────────────
+        if self.loaded and self.model is not None:
+            try:
+                import numpy as np  # noqa: F811
+                row = np.array(self._feature_vector(feat_dict), dtype=np.float32).reshape(1, -1)
+                if self.scaler:
+                    row = self.scaler.transform(row)
+                if self.model_type == 'keras':
+                    probs = self.model.predict(row, verbose=0)[0]
+                    idx   = int(probs.argmax())
+                    conf  = float(probs[idx])
+                elif self.model_type == 'sklearn':
+                    pred  = self.model.predict(row)[0]
+                    proba = getattr(self.model, 'predict_proba', None)
+                    conf  = float(max(proba(row)[0])) if proba else 0.9
+                    idx   = pred
+
+                if self.label_encoder:
+                    raw_label = self.label_encoder.inverse_transform(np.array([idx]))[0]
+                else:
+                    raw_label = self.CIC_LABELS[idx] if idx < len(self.CIC_LABELS) else 'Unknown'
+
+                ui_label  = self.UI_LABEL_MAP.get(raw_label, raw_label)
+                is_threat = raw_label in self.THREAT_LABELS
+                return ui_label, round(conf, 4), is_threat
+
+            except Exception as e:
+                print(f"  Model inference error: {e}")
+
+        # ── Flow-aware heuristic fallback ─────────────────────────────────────
+        return self._flow_heuristic(feat_dict)
+
+    def _flow_heuristic(self, f):
+        """
+        Rule-based detection on CIC-IDS flow features.
+        More accurate than per-packet rules because it uses flow statistics.
+        """
+        dst_port   = f.get('Dst Port', 0)
+        tot_pkts   = f.get('Tot Fwd Pkts', 0) + f.get('Tot Bwd Pkts', 0)
+        flow_pkt_s = f.get('Flow Pkts/s', 0)
+        bwd_max    = f.get('Bwd Pkt Len Max', 0)
+        pkt_var    = f.get('Pkt Len Var', 0)
+        syn_cnt    = f.get('SYN Flag Cnt', 0)
+        rst_cnt    = f.get('RST Flag Cnt', 0)
+        fin_cnt    = f.get('FIN Flag Cnt', 0)
+        iat_mean   = f.get('Flow IAT Mean', 0)
+        fwd_pkts   = f.get('Tot Fwd Pkts', 0)
+        bwd_pkts   = f.get('Tot Bwd Pkts', 0)
+        down_up    = f.get('Down/Up Ratio', 1)
+        idle_mean  = f.get('Idle Mean', 0)
+        pkt_len_std = f.get('Pkt Len Std', 0)
+
+        BRUTE_PORTS = {22, 21, 23, 3389, 5900, 25, 3306}
+        SUSP_PORTS  = {4444, 1337, 31337, 6666, 6667, 12345, 9999}
+
+        # DoS/DDoS: very high packet rate + high SYN or tiny IAT
+        if flow_pkt_s > 1000 or (syn_cnt > 100 and tot_pkts > 200):
+            return 'DoS/DDoS', 0.87, True
+
+        # Port Scan: many SYNs, many RSTs, very short flows, low bwd pkt
+        if syn_cnt > 20 and rst_cnt > 10 and bwd_pkts < 5:
+            return 'PortScan', 0.84, True
+
+        # Brute Force: many pkts to auth port, low variance (same request repeated)
+        if dst_port in BRUTE_PORTS and fwd_pkts > 30 and pkt_len_std < 50:
+            return 'Brute Force', 0.76, True
+
+        # Bot Activity: connection to suspicious port or unusual pattern
+        if dst_port in SUSP_PORTS:
+            return 'Bot Activity', 0.78, True
+
+        # Infiltration: long-lived flow, high bwd bytes, low fwd (exfiltration)
+        if bwd_max > 1400 and down_up > 5 and idle_mean > 0:
+            return 'Infiltration', 0.66, True
+
+        # XSS / Web attacks: HTTP/HTTPS with high pkt variance, moderate rate
+        if dst_port in (80, 443, 8080, 8443) and pkt_var > 100000 and fwd_pkts > 10:
+            return 'Web Attack', 0.61, True
+
+        return 'Benign', 0.93, False
+
+
+# Priority 2 labels for ATTACK_LABELS (CIC-aligned)
+# Update PacketAnomalyDetector.ATTACK_LABELS to match CIC-IDS label space
+PacketAnomalyDetector.ATTACK_LABELS = [
+    'Benign', 'DoS/DDoS', 'PortScan', 'Brute Force',
+    'Bot Activity', 'Infiltration', 'Web Attack', 'XSS', 'SQLi', 'Heartbleed',
+]
+
+network_ml_model = NetworkMLModel()
+print(f"✅ NetworkMLModel ready — {'Keras/sklearn inference' if network_ml_model.loaded else 'flow heuristics'}")
 
 
 # ─── Network connection monitor ───────────────────────────────────────────────
@@ -401,126 +980,244 @@ class NetworkMonitor:
         self.last_time         = time.time()
         self.interface         = None
         self.simulated_packets = 0
+        # What actually runs after Start: 'real' | 'simulation' | None
+        self.last_capture_mode = None
 
-    # ── Simulation helpers ────────────────────────────────────────────────────
+    # ── Protocol list (used only for display, not simulation) ─────────────────
     _SIM_PROTOCOLS  = ['TCP', 'UDP', 'ICMP', 'HTTP', 'DNS', 'ARP', 'HTTPS', 'SSH', 'FTP']
     _SIM_WEIGHTS    = [0.35, 0.20, 0.05, 0.12, 0.10, 0.03, 0.08, 0.04, 0.03]
 
-    # Threat scenarios injected periodically
-    _THREAT_SCENARIOS = [
-        {'protocol': 'TCP', 'dst_port': 4444,  'label': 'Bot Activity',  'conf': 0.82},
-        {'protocol': 'TCP', 'dst_port': 22,    'label': 'Brute Force',   'conf': 0.74},
-        {'protocol': 'UDP', 'size': 1480,      'label': 'DoS/DDoS',      'conf': 0.86},
-        {'protocol': 'TCP', 'dst_port': 31337, 'label': 'Bot Activity',  'conf': 0.79},
-        {'protocol': 'TCP', 'dst_port': 21,    'label': 'Brute Force',   'conf': 0.71},
-    ]
 
-    def generate_simulated_packet(self):
-        protocol = random.choices(self._SIM_PROTOCOLS, weights=self._SIM_WEIGHTS)[0]
-        src_ip   = f"192.168.{random.randint(1,254)}.{random.randint(1,254)}"
-        dst_ip   = f"10.0.{random.randint(1,254)}.{random.randint(1,254)}"
-        size     = (random.randint(500, 1500) if protocol == 'HTTP'  else
-                    random.randint(64,  512)  if protocol == 'DNS'   else
-                    random.randint(64,  1500))
-        # Attach a plausible dst port
-        port_map = {'HTTP': 80, 'HTTPS': 443, 'SSH': 22, 'DNS': 53,
-                    'FTP': 21, 'SMTP': 25, 'MySQL': 3306}
-        dst_port = port_map.get(protocol, random.randint(1024, 65535))
-        return {
-            'timestamp': datetime.now().strftime('%H:%M:%S.%f')[:-3],
-            'protocol':  protocol,
-            'size':      size,
-            'src':       src_ip,
-            'dst':       f"{dst_ip}:{dst_port}",
+    @staticmethod
+    def _make_flow_features(dst_port, size, hint='benign'):
+        """
+        Synthesise a CIC-IDS-2017 feature dict that looks like the given
+        traffic hint so the real ML model can classify it meaningfully.
+        """
+        import random as _r
+        f = {k: 0.0 for k in NetworkMLModel.FEATURE_COLS}
+        f['Dst Port'] = float(dst_port)
+
+        if hint == 'ddos':
+            pkts = _r.randint(500, 2000)
+            dur  = _r.uniform(0.05, 0.5)
+            pkt_sz = _r.randint(60, 80)
+            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': 2,
+                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': 2 * pkt_sz,
+                      'Flow Duration': dur,
+                      'Flow Pkts/s': pkts / max(dur, 1e-6),
+                      'Flow Byts/s': pkts * pkt_sz / max(dur, 1e-6),
+                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
+                      'Flow IAT Std': 5.0, 'Flow IAT Max': 10.0, 'Flow IAT Min': 0.1,
+                      'SYN Flag Cnt': _r.randint(200, 800),
+                      'Fwd Pkts/s': pkts / max(dur, 1e-6),
+                      'Pkt Len Min': pkt_sz, 'Pkt Len Max': pkt_sz + 4,
+                      'Pkt Len Mean': pkt_sz, 'Pkt Len Std': 2.0, 'Pkt Len Var': 4.0,
+                      'Pkt Size Avg': pkt_sz,
+                      'Init Fwd Win Byts': 0, 'Init Bwd Win Byts': 0})
+
+        elif hint == 'bruteforce':
+            pkts = _r.randint(50, 200)
+            dur  = _r.uniform(5, 30)
+            pkt_sz = _r.randint(60, 120)
+            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': pkts,
+                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': pkts * pkt_sz,
+                      'Flow Duration': dur,
+                      'Flow Pkts/s': pkts * 2 / max(dur, 1e-6),
+                      'Flow Byts/s': pkts * 2 * pkt_sz / max(dur, 1e-6),
+                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
+                      'Flow IAT Std': 10.0, 'Flow IAT Max': 50.0, 'Flow IAT Min': 1.0,
+                      'SYN Flag Cnt': pkts, 'ACK Flag Cnt': pkts,
+                      'Pkt Len Min': pkt_sz - 5, 'Pkt Len Max': pkt_sz + 5,
+                      'Pkt Len Mean': pkt_sz, 'Pkt Len Std': 8.0, 'Pkt Len Var': 64.0,
+                      'Pkt Size Avg': pkt_sz,
+                      'Fwd Pkts/s': pkts / max(dur, 1e-6),
+                      'Bwd Pkts/s': pkts / max(dur, 1e-6),
+                      'Init Fwd Win Byts': 65535, 'Init Bwd Win Byts': 65535,
+                      'Fwd Act Data Pkts': pkts})
+
+        elif hint == 'portscan':
+            pkts = _r.randint(100, 500)
+            dur  = _r.uniform(1, 10)
+            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': _r.randint(0, 5),
+                      'TotLen Fwd Pkts': pkts * 40, 'TotLen Bwd Pkts': 0,
+                      'Flow Duration': dur,
+                      'Flow Pkts/s': pkts / max(dur, 1e-6),
+                      'SYN Flag Cnt': pkts, 'RST Flag Cnt': _r.randint(50, 200),
+                      'Flow IAT Mean': 500.0, 'Flow IAT Std': 20.0,
+                      'Pkt Len Min': 40, 'Pkt Len Max': 44,
+                      'Pkt Len Mean': 40.0, 'Pkt Len Std': 1.0, 'Pkt Len Var': 1.0,
+                      'Pkt Size Avg': 40.0,
+                      'Init Fwd Win Byts': 1024, 'Init Bwd Win Byts': 0})
+
+        elif hint == 'dos':
+            pkts = _r.randint(1000, 5000)
+            dur  = _r.uniform(1, 5)
+            pkt_sz = _r.randint(800, 1400)
+            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': _r.randint(1, 10),
+                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': 0,
+                      'Flow Duration': dur,
+                      'Flow Pkts/s': pkts / max(dur, 1e-6),
+                      'Flow Byts/s': pkts * pkt_sz / max(dur, 1e-6),
+                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
+                      'Flow IAT Std': 1.0, 'Flow IAT Max': 5.0, 'Flow IAT Min': 0.1,
+                      'PSH Flag Cnt': pkts, 'ACK Flag Cnt': pkts,
+                      'Pkt Len Min': pkt_sz - 50, 'Pkt Len Max': pkt_sz,
+                      'Pkt Len Mean': pkt_sz - 25, 'Pkt Len Std': 20.0,
+                      'Pkt Size Avg': pkt_sz - 25,
+                      'Init Fwd Win Byts': 65535, 'Init Bwd Win Byts': 65535,
+                      'Fwd Act Data Pkts': pkts})
+
+        elif hint == 'bot':
+            pkts = _r.randint(10, 50)
+            dur  = _r.uniform(60, 300)
+            pkt_sz = _r.randint(100, 400)
+            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': pkts,
+                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': pkts * pkt_sz,
+                      'Flow Duration': dur,
+                      'Flow Pkts/s': pkts * 2 / max(dur, 1e-6),
+                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
+                      'Flow IAT Std': 5000.0, 'Flow IAT Max': 30000.0, 'Flow IAT Min': 100.0,
+                      'ACK Flag Cnt': pkts, 'PSH Flag Cnt': pkts,
+                      'Pkt Len Min': pkt_sz - 20, 'Pkt Len Max': pkt_sz + 20,
+                      'Pkt Len Mean': pkt_sz, 'Pkt Len Std': 15.0, 'Pkt Len Var': 225.0,
+                      'Pkt Size Avg': pkt_sz,
+                      'Idle Mean': dur / 4 * 1e6, 'Idle Max': dur / 2 * 1e6,
+                      'Init Fwd Win Byts': 65535, 'Init Bwd Win Byts': 65535})
+
+        else:  # benign
+            pkts = _r.randint(5, 40)
+            dur  = _r.uniform(0.5, 10)
+            pkt_sz = _r.randint(200, 1400)
+            bwd_pkts = _r.randint(3, pkts)
+            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': bwd_pkts,
+                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': bwd_pkts * pkt_sz,
+                      'Flow Duration': dur,
+                      'Flow Pkts/s': (pkts + bwd_pkts) / max(dur, 1e-6),
+                      'Flow Byts/s': (pkts + bwd_pkts) * pkt_sz / max(dur, 1e-6),
+                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
+                      'Flow IAT Std': 1000.0, 'Flow IAT Max': 5000.0, 'Flow IAT Min': 100.0,
+                      'SYN Flag Cnt': 1, 'FIN Flag Cnt': 1, 'ACK Flag Cnt': pkts + bwd_pkts,
+                      'PSH Flag Cnt': _r.randint(1, pkts),
+                      'Pkt Len Min': 54, 'Pkt Len Max': pkt_sz,
+                      'Pkt Len Mean': pkt_sz * 0.6, 'Pkt Len Std': pkt_sz * 0.2,
+                      'Pkt Len Var': (pkt_sz * 0.2) ** 2,
+                      'Pkt Size Avg': pkt_sz * 0.6,
+                      'Down/Up Ratio': bwd_pkts / max(pkts, 1),
+                      'Init Fwd Win Byts': 65535, 'Init Bwd Win Byts': 65535,
+                      'Fwd Act Data Pkts': pkts})
+        return f
+
+    # ── Passive monitor (no admin needed — uses psutil) ───────────────────────
+    def passive_monitor(self):
+        """
+        Monitors real network activity using psutil without requiring admin.
+        Reads per-NIC byte/packet counters, derives rates, lists active
+        connections and classifies each one through the ML model.
+        """
+        import psutil, random
+        print("  📊 PASSIVE MODE: Real network stats via psutil (no Scapy needed)")
+        prev_io   = psutil.net_io_counters(pernic=False)
+        prev_time = time.time()
+
+        PORT_PROTO = {
+            80: 'HTTP', 443: 'HTTPS', 22: 'SSH', 21: 'FTP', 25: 'SMTP',
+            53: 'DNS',  3306: 'MySQL', 3389: 'RDP', 8080: 'HTTP',
         }
 
-    def simulate_traffic(self):
-        print("  🎮 SIMULATION MODE: Generating test traffic...")
-        scenario_counter = 0
         while self.sniffing:
             try:
-                rate = random.randint(20, 60)
-                for _ in range(rate):
-                    if not self.sniffing:
-                        break
+                time.sleep(1.0)
+                if not self.sniffing:
+                    break
 
-                    # Every ~50 packets inject a threat scenario for realism
-                    scenario_counter += 1
-                    inject_threat = (scenario_counter % 50 == 0)
+                now    = time.time()
+                cur_io = psutil.net_io_counters(pernic=False)
+                dt     = max(now - prev_time, 0.001)
 
-                    if inject_threat:
-                        sc       = random.choice(self._THREAT_SCENARIOS)
-                        src_ip   = f"192.168.{random.randint(1,254)}.{random.randint(1,254)}"
-                        dst_ip   = f"10.0.{random.randint(1,254)}.{random.randint(1,254)}"
-                        dst_port = sc.get('dst_port', random.randint(1024, 65535))
-                        size     = sc.get('size', random.randint(64, 1500))
-                        packet   = {
-                            'timestamp': datetime.now().strftime('%H:%M:%S.%f')[:-3],
-                            'protocol':  sc['protocol'],
-                            'size':      size,
-                            'src':       src_ip,
-                            'dst':       f"{dst_ip}:{dst_port}",
-                        }
-                        ml_pred = {
-                            'attack_type': sc['label'],
-                            'confidence':  sc['conf'],
-                            'is_threat':   True,
-                            'timestamp':   packet['timestamp'],
-                            'src':         packet['src'],
-                            'dst':         packet['dst'],
-                            'protocol':    packet['protocol'],
-                        }
-                        ml_anomaly_detector.record_simulated(sc['label'], sc['conf'], True)
-                    else:
-                        packet  = self.generate_simulated_packet()
-                        ml_pred = {
-                            'attack_type': 'Benign',
-                            'confidence':  round(random.uniform(0.88, 0.98), 4),
-                            'is_threat':   False,
-                            'timestamp':   packet['timestamp'],
-                            'src':         packet['src'],
-                            'dst':         packet['dst'],
-                            'protocol':    packet['protocol'],
-                        }
-                        ml_anomaly_detector.record_simulated('Benign', ml_pred['confidence'], False)
+                bytes_delta   = (cur_io.bytes_recv  + cur_io.bytes_sent) - \
+                                (prev_io.bytes_recv + prev_io.bytes_sent)
+                packets_delta = (cur_io.packets_recv + cur_io.packets_sent) - \
+                                (prev_io.packets_recv + prev_io.packets_sent)
 
-                    self.simulated_packets += 1
-                    self.packet_count      += 1
-                    self.byte_count        += packet['size']
+                byte_rate   = bytes_delta   / dt
+                packet_rate = packets_delta / dt
+
+                prev_io   = cur_io
+                prev_time = now
+
+                # Update global stats with real counters
+                with stats_lock:
+                    stats['total_bytes']   += int(bytes_delta)
+                    stats['total_packets'] += int(packets_delta)
+                    stats['bandwidth']['total']    = int(byte_rate)
+                    stats['bandwidth']['download'] = int(cur_io.bytes_recv / max(now - stats.get('start_ts', now), 1))
+
+                self.byte_count    += int(bytes_delta)
+                self.packet_count  += int(packets_delta)
+
+                # Get active connections and classify each through ML model
+                try:
+                    conns = psutil.net_connections(kind='inet')
+                except (psutil.AccessDenied, PermissionError):
+                    conns = []
+
+                seen = set()
+                for c in conns[:30]:  # limit to 30 to avoid flooding
+                    if c.status not in ('ESTABLISHED', 'CLOSE_WAIT'):
+                        continue
+                    laddr = c.laddr
+                    raddr = c.raddr
+                    if not raddr:
+                        continue
+
+                    key = (laddr.port, raddr.ip, raddr.port)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    dst_port = raddr.port
+                    proto    = PORT_PROTO.get(dst_port,
+                               PORT_PROTO.get(laddr.port, 'TCP'))
+                    pkt_sz   = random.randint(200, 1400)
+
+                    # Build flow features and run through ML model
+                    feat = self._make_flow_features(dst_port, pkt_sz, 'benign')
+                    feat['Dst Port']      = float(dst_port)
+                    feat['Flow Pkts/s']   = packet_rate / max(len(conns), 1)
+                    feat['Flow Byts/s']   = byte_rate   / max(len(conns), 1)
+                    label, conf, is_threat = network_ml_model.predict_flow(feat)
+
+                    ml_pred = {
+                        'attack_type': label,
+                        'confidence':  conf,
+                        'is_threat':   is_threat,
+                        'timestamp':   datetime.now().strftime('%H:%M:%S.%f')[:-3],
+                        'src':         f"{laddr.ip}:{laddr.port}",
+                        'dst':         f"{raddr.ip}:{raddr.port}",
+                        'protocol':    proto,
+                    }
+
+                    ml_anomaly_detector.record_simulated(label, conf, is_threat)
+                    socketio.emit('ml_prediction', ml_pred)
 
                     with stats_lock:
-                        stats['total_packets'] += 1
-                        stats['total_bytes']   += packet['size']
-                        proto = packet['protocol']
                         stats['protocols'][proto] = stats['protocols'].get(proto, 0) + 1
-                        stats['bandwidth']['total']    += packet['size']
-                        stats['bandwidth']['download'] += packet['size']
-
                         conn_entry = {
-                            'src':         packet['src'],
-                            'dst':         packet['dst'],
-                            'protocol':    packet['protocol'],
-                            'size':        packet['size'],
-                            'time':        packet['timestamp'],
-                            'attack_type': ml_pred['attack_type'],
-                            'is_threat':   ml_pred['is_threat'],
-                            'confidence':  ml_pred['confidence'],
+                            'src':         ml_pred['src'],
+                            'dst':         ml_pred['dst'],
+                            'protocol':    proto,
+                            'size':        pkt_sz,
+                            'time':        ml_pred['timestamp'],
+                            'attack_type': label,
+                            'is_threat':   is_threat,
+                            'confidence':  conf,
                         }
                         stats['connections'].insert(0, conn_entry)
                         stats['connections'] = stats['connections'][:200]
 
-                    try:
-                        packet_queue.put_nowait(packet)
-                    except queue.Full:
-                        pass
-
-                    # Emit ML prediction for every packet (real-time feed)
-                    socketio.emit('ml_prediction', ml_pred)
-
-                    time.sleep(1.0 / rate)
-
             except Exception as e:
-                print(f"  Simulation error: {e}")
+                print(f"  Passive monitor error: {e}")
                 time.sleep(1)
 
     # ── Real packet handler ───────────────────────────────────────────────────
@@ -543,11 +1240,16 @@ class NetworkMonitor:
 
             protocol  = 'OTHER'
             src_ip    = dst_ip = 'N/A'
-            src_port  = dst_port = 'N/A'
+            src_port  = dst_port = 0
+            flags     = {}
+            header_len = 0
+            win_size   = -1
+            proto_num  = 0       # numeric protocol for CIC feature
 
             if ARP and packet.haslayer(ARP):
                 arp = packet[ARP]
                 protocol, src_ip, dst_ip = 'ARP', arp.psrc, arp.pdst
+                proto_num = 0
 
             elif IP and packet.haslayer(IP):
                 ip = packet[IP]
@@ -555,16 +1257,33 @@ class NetworkMonitor:
                 if TCP and packet.haslayer(TCP):
                     tcp = packet[TCP]
                     src_port, dst_port = tcp.sport, tcp.dport
+                    proto_num  = 6
+                    header_len = tcp.dataofs * 4 if tcp.dataofs else 20
+                    win_size   = tcp.window
+                    f = tcp.flags
+                    flags = {
+                        'FIN': bool(f & 0x01),
+                        'SYN': bool(f & 0x02),
+                        'RST': bool(f & 0x04),
+                        'PSH': bool(f & 0x08),
+                        'ACK': bool(f & 0x10),
+                        'URG': bool(f & 0x20),
+                        'ECE': bool(f & 0x40),
+                        'CWE': bool(f & 0x80),
+                    }
                     port_map = {80:'HTTP',443:'HTTPS',22:'SSH',53:'DNS',
                                 21:'FTP',25:'SMTP',3306:'MySQL'}
                     protocol = port_map.get(dst_port, port_map.get(src_port, 'TCP'))
                 elif UDP and packet.haslayer(UDP):
                     udp = packet[UDP]
                     src_port, dst_port = udp.sport, udp.dport
+                    proto_num = 17
+                    header_len = 8
                     port_map = {53:'DNS',123:'NTP',67:'DHCP',68:'DHCP'}
                     protocol = port_map.get(dst_port, port_map.get(src_port, 'UDP'))
                 elif ICMP and packet.haslayer(ICMP):
-                    protocol = 'ICMP'
+                    protocol  = 'ICMP'
+                    proto_num = 1
 
             elif IPv6 and packet.haslayer(IPv6):
                 ipv6 = packet[IPv6]
@@ -572,22 +1291,42 @@ class NetworkMonitor:
                 if TCP and packet.haslayer(TCP):
                     tcp = packet[TCP]
                     src_port, dst_port = tcp.sport, tcp.dport
+                    proto_num  = 6
+                    header_len = tcp.dataofs * 4 if tcp.dataofs else 20
+                    win_size   = tcp.window
+                    f = tcp.flags
+                    flags = {
+                        'FIN': bool(f & 0x01), 'SYN': bool(f & 0x02),
+                        'RST': bool(f & 0x04), 'PSH': bool(f & 0x08),
+                        'ACK': bool(f & 0x10), 'URG': bool(f & 0x20),
+                        'ECE': bool(f & 0x40), 'CWE': bool(f & 0x80),
+                    }
                     protocol = 'TCP'
                 elif UDP and packet.haslayer(UDP):
                     udp = packet[UDP]
                     src_port, dst_port = udp.sport, udp.dport
-                    protocol = 'UDP'
+                    proto_num  = 17
+                    header_len = 8
+                    protocol   = 'UDP'
                 else:
-                    protocol = 'ICMPv6'
+                    protocol  = 'ICMPv6'
+                    proto_num = 58
 
-            if protocol == 'OTHER':
-                return
+            src_str = f"{src_ip}:{src_port}" if src_port else src_ip
+            dst_str = f"{dst_ip}:{dst_port}" if dst_port else dst_ip
 
-            src_str = f"{src_ip}:{src_port}" if src_port != 'N/A' else src_ip
-            dst_str = f"{dst_ip}:{dst_port}" if dst_port != 'N/A' else dst_ip
+            # ── Priority 3: feed FlowAggregator (builds CIC-IDS flow features) ──
+            if src_ip != 'N/A' and protocol != 'ARP':
+                flow_aggregator.add_packet(
+                    src_ip, dst_ip,
+                    src_port, dst_port,
+                    proto_num, packet_size,
+                    flags, header_len, win_size,
+                )
 
-            # ── ML anomaly detection ──────────────────────────────────────
-            ml_pred = ml_anomaly_detector.analyze(src_str, dst_str, protocol, packet_size)
+            # ── Per-packet heuristic (fast path, shown immediately in UI) ────
+            ml_pred = ml_anomaly_detector.analyze(
+                src_str, dst_str, protocol, packet_size)
 
             with stats_lock:
                 stats['total_packets'] += 1
@@ -638,7 +1377,7 @@ class NetworkMonitor:
         self.interface = interface
         stats['start_time'] = datetime.now()
         try:
-            if REAL_CAPTURE_AVAILABLE and is_admin() and SCAPY_AVAILABLE:
+            if REAL_CAPTURE_AVAILABLE and SCAPY_AVAILABLE:
                 import builtins
                 scapy_mod     = getattr(builtins, '_scapy', None)
                 iface_to_use  = None
@@ -647,16 +1386,37 @@ class NetworkMonitor:
                 else:
                     try:
                         if scapy_mod and hasattr(scapy_mod, 'get_windows_if_list'):
+                            keys = ('wi-fi', 'wifi', 'wlan', 'wireless', '802.11',
+                                    'ethernet', 'gigabit')
                             for iface in scapy_mod.get_windows_if_list():
-                                desc = iface.get('description', '').lower()
-                                if any(k in desc for k in ('wi-fi','wlan','ethernet')):
+                                desc = (iface.get('description') or '').lower()
+                                name = (iface.get('name') or '').lower()
+                                if any(k in desc or k in name for k in keys):
                                     iface_to_use = iface.get('name')
                                     print(f"  Found active interface: {iface_to_use}")
                                     break
-                    except:
+                    except Exception as _e:
+                        print(f"  ⚠️  Interface auto-pick failed: {_e}")
+
+                if not iface_to_use and scapy_mod:
+                    try:
+                        from scapy import conf as scapy_conf
+                        iface_to_use = getattr(scapy_conf, 'iface', None)
+                        if iface_to_use is not None:
+                            iface_to_use = getattr(iface_to_use, 'name', iface_to_use)
+                            print(f"  Using Scapy conf.iface: {iface_to_use}")
+                    except Exception:
                         pass
 
-                sniff_kwargs = {'prn': self.packet_handler, 'store': 0, 'timeout': 0.1}
+                # CRITICAL: Scapy's sniff(timeout=N) STOPS ENTIRELY after N seconds (not poll interval).
+                # timeout=0.1 made capture quit almost immediately → zero packets on the dashboard.
+                sniff_kwargs = {
+                    'prn': self.packet_handler,
+                    'store': 0,
+                    'timeout': None,
+                    # Stop capture loop soon after user clicks Stop (evaluated per packet)
+                    'stop_filter': lambda _pkt: not self.sniffing,
+                }
                 if iface_to_use:
                     sniff_kwargs['iface'] = iface_to_use
                     print(f"  🔴 Starting REAL capture on: {iface_to_use}")
@@ -672,23 +1432,26 @@ class NetworkMonitor:
                     target=sniff_fn, kwargs=sniff_kwargs,
                     daemon=True, name="SniffThread")
                 self.sniff_thread.start()
+                self.last_capture_mode = 'real'
                 print("  ✅ REAL packet capture started!")
             else:
-                print("  🎮 Starting SIMULATION mode")
+                print("  📊 Starting PASSIVE mode (psutil — no admin needed for basic stats)")
+                self.last_capture_mode = 'passive'
                 self.sniff_thread = threading.Thread(
-                    target=self.simulate_traffic,
-                    daemon=True, name="SimulationThread")
+                    target=self.passive_monitor,
+                    daemon=True, name="PassiveMonitorThread")
                 self.sniff_thread.start()
-                print("  ✅ SIMULATION started!")
+                print("  ✅ PASSIVE monitoring started (real interface stats + connection ML)")
             return True
         except Exception as e:
             print(f"  ❌ Failed to start capture: {e}")
             self.sniffing = False
-            print("  🎮 Falling back to SIMULATION mode")
+            print("  📊 Falling back to PASSIVE mode")
             self.sniffing = True
+            self.last_capture_mode = 'passive'
             self.sniff_thread = threading.Thread(
-                target=self.simulate_traffic,
-                daemon=True, name="SimFallbackThread")
+                target=self.passive_monitor,
+                daemon=True, name="PassiveFallbackThread")
             self.sniff_thread.start()
             return True
 
@@ -704,6 +1467,8 @@ class NetworkMonitor:
                 packet_queue.get_nowait()
             except:
                 break
+        self.last_capture_mode = None
+        flow_aggregator.reset()   # discard in-flight flows
         print("  ✅ Capture stopped")
 
 
@@ -714,7 +1479,8 @@ update_thread         = None
 
 def continuous_update_sender():
     print("  🔄 Continuous update thread started")
-    last_stats_time = time.time()
+    last_stats_time   = time.time()
+    last_flow_expire  = time.time()
 
     while update_thread_running:
         try:
@@ -725,10 +1491,45 @@ def continuous_update_sender():
             while not packet_queue.empty() and len(packets) < 20:
                 try:
                     packets.append(packet_queue.get_nowait())
-                except:
+                except Exception:
                     break
             if packets:
                 socketio.emit('packets', {'packets': packets})
+
+            # ── Priority 3: drain completed flows and run ML model ────────────
+            if current_time - last_flow_expire >= 5:
+                flow_aggregator.expire_old_flows()
+                last_flow_expire = current_time
+
+            completed_flows = flow_aggregator.drain_completed()
+            for feat in completed_flows:
+                try:
+                    label, conf, is_threat = network_ml_model.predict_flow(feat)
+                    if is_threat:
+                        flow_pred = {
+                            'attack_type': label,
+                            'confidence':  round(conf, 4),
+                            'is_threat':   True,
+                            'src':         f"{feat.get('_src', '?')}:{feat.get('_src_port', '?')}",
+                            'dst':         f"{feat.get('_dst', '?')}:{feat.get('_dst_port', '?')}",
+                            'source':      'flow_ml',
+                        }
+                        socketio.emit('ml_prediction', flow_pred)
+                        with stats_lock:
+                            entry = {
+                                'src':        flow_pred['src'],
+                                'dst':        flow_pred['dst'],
+                                'protocol':   'FLOW',
+                                'attack_type': label,
+                                'confidence': conf,
+                                'is_threat':  True,
+                                'time':       datetime.now().strftime('%H:%M:%S'),
+                                'size':       0,
+                            }
+                            stats['connections'].insert(0, entry)
+                            stats['connections'] = stats['connections'][:200]
+                except Exception as _fe:
+                    print(f"  Flow ML error: {_fe}")
 
             # Full stats update every second
             if current_time - last_stats_time >= 1:
@@ -762,7 +1563,9 @@ def continuous_update_sender():
                         'connections':        stats['connections'][:10],
                         'connection_status':  stats['connection_status'],
                         'ml_stats':           ml_stats,
-                        'models_loaded':      True,
+                        # Priority 5: reflect actual model loading state
+                        'models_loaded':      network_ml_model.loaded,
+                        'model_type':         network_ml_model.model_type or 'heuristic',
                     }
                 socketio.emit('stats_update', current)
                 last_stats_time = current_time
@@ -819,7 +1622,8 @@ def get_stats():
             'errors':             stats['errors'],
             'connection_status':  stats['connection_status'],
             'ml_stats':           ml_stats,
-            'models_loaded':      True,
+            'models_loaded':      network_ml_model.loaded,
+            'model_type':         network_ml_model.model_type or 'heuristic',
         })
 
 
@@ -827,8 +1631,11 @@ def get_stats():
 def get_ml_status():
     ml_stats = ml_anomaly_detector.get_ml_stats()
     return jsonify({
-        'loaded':           True,
-        'model_type':       'Statistical Anomaly Detector',
+        # Priority 5: reflect actual loader state
+        'loaded':           network_ml_model.loaded,
+        'model_type':       network_ml_model.model_type or 'flow_heuristic',
+        'flow_engine':      'FlowAggregator (CIC-IDS 79 features)',
+        'heuristic_engine': 'PacketAnomalyDetector (per-packet rules)',
         'attack_labels':    PacketAnomalyDetector.ATTACK_LABELS,
         'threat_count':     ml_stats['threats'],
         'normal_count':     ml_stats['normal'],
@@ -989,7 +1796,8 @@ def get_network_info():
 @app.route('/api/interfaces')
 def get_interfaces():
     interfaces = []
-    if REAL_CAPTURE_AVAILABLE:
+    # List adapters whenever Scapy + admin — not only when filtered NETWORK_INTERFACES was non-empty
+    if SCAPY_AVAILABLE and is_admin():
         try:
             import builtins
             scapy_mod = getattr(builtins, '_scapy', None)
@@ -1012,7 +1820,8 @@ def get_interfaces():
                  for k in ('wi-fi','wlan')) else 1))
 
     if not interfaces:
-        interfaces = [{'name': 'all', 'description': 'Simulation Mode', 'ips': []}]
+        hint = 'Simulation / no adapters — run as Administrator + install Npcap for Wi‑Fi list'
+        interfaces = [{'name': 'all', 'description': hint, 'ips': []}]
     return jsonify(interfaces)
 
 
@@ -1022,13 +1831,16 @@ def get_status():
         'capturing':          monitor.sniffing,
         'queue_size':         packet_queue.qsize(),
         'interface':          monitor.interface,
-        'mode':               'real' if REAL_CAPTURE_AVAILABLE else 'simulation',
+        'mode':               'real' if REAL_CAPTURE_AVAILABLE else 'passive',
+        # What Start Monitoring actually chose (truth for dummy vs live)
+        'active_capture':     monitor.last_capture_mode,
         'admin':              is_admin(),
         'scapy':              SCAPY_AVAILABLE,
-        'simulated_packets':  monitor.simulated_packets,
+        'simulated_packets':  0,
         'connection_status':  stats['connection_status'],
-        'models_loaded':      True,
-        'ml_engine':          'Statistical Anomaly Detector',
+        'models_loaded':      network_ml_model.loaded,
+        'model_type':         network_ml_model.model_type or 'heuristic',
+        'ml_engine':          'NetworkMLModel + FlowAggregator',
     })
 
 
@@ -1044,11 +1856,10 @@ def handle_connect():
             'network_info': conn_monitor.get_network_info(),
             'timestamp':    datetime.now().isoformat()
         })
-        # Immediately tell the client the ML engine is ready
         emit('ml_status', {
-            'models_loaded': True,
-            'loaded':        True,
-            'model_type':    'Statistical Anomaly Detector',
+            'models_loaded': network_ml_model.loaded,
+            'loaded':        network_ml_model.loaded,
+            'model_type':    network_ml_model.model_type or 'flow_heuristic',
             'attack_labels': PacketAnomalyDetector.ATTACK_LABELS,
         })
     except Exception as e:
@@ -1065,8 +1876,13 @@ def handle_start(data):
     interface = data.get('interface', 'all') if isinstance(data, dict) else 'all'
     print(f"\n  ▶️  Start capture — interface: {interface}")
     if monitor.start_capture(interface):
-        mode = 'real' if REAL_CAPTURE_AVAILABLE else 'simulation'
-        emit('monitoring_status', {'status': 'started', 'mode': mode, 'interface': interface})
+        ac = monitor.last_capture_mode or 'none'
+        emit('monitoring_status', {
+            'status': 'started',
+            'mode': 'real' if ac == 'real' else ('passive' if ac == 'passive' else 'requires_admin'),
+            'active_capture': ac,
+            'interface': interface,
+        })
     else:
         emit('monitoring_status', {'status': 'error', 'message': 'Failed to start'})
 
@@ -1096,8 +1912,9 @@ def handle_clear():
         stats['start_time']  = datetime.now()
         monitor.packet_count      = 0
         monitor.byte_count        = 0
-        monitor.simulated_packets = 0
+        pass  # no simulation counter to reset
     ml_anomaly_detector.reset()
+    flow_aggregator.reset()
     emit('stats_cleared', {'status': 'success'})
 
 
@@ -1113,9 +1930,9 @@ def handle_refresh():
             'timestamp':    datetime.now().isoformat()
         })
         emit('ml_status', {
-            'models_loaded': True,
-            'loaded':        True,
-            'model_type':    'Statistical Anomaly Detector',
+            'models_loaded': network_ml_model.loaded,
+            'loaded':        network_ml_model.loaded,
+            'model_type':    network_ml_model.model_type or 'flow_heuristic',
         })
     except Exception as e:
         print(f"  refresh handler error: {e}")
@@ -1146,7 +1963,7 @@ if __name__ == '__main__':
     print("✅ ML Anomaly Detector ready (Statistical engine — no model file needed)")
 
     print(f"\n📡 Server URL: http://localhost:{port}")
-    print(f"🎯 Mode: {'🔴 REAL CAPTURE' if REAL_CAPTURE_AVAILABLE else '🎮 SIMULATION MODE'}")
+    print(f"🎯 Mode: {'🔴 REAL CAPTURE' if REAL_CAPTURE_AVAILABLE else '⚠️  REQUIRES ADMINISTRATOR'}")
     print(f"🤖 ML:   Statistical Anomaly Detector (Benign / Threat classification)")
     print("=" * 70)
     print(f"✨ Open: http://localhost:{port}")

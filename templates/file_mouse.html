@@ -506,6 +506,8 @@
     let socket = null, chart = null;
     let fileScores = [], mouseScores = [], chartLabels = [];
     let reportStats = {}, reportActivities = [], allFeedItems = [], currentFilter = 'all';
+    let lastMouseEventTime = 0;  // epoch ms — reset on every mouse_event socket message
+    let lastFileEventTime  = 0;  // epoch ms — reset on every file_event socket message
     const $ = id => document.getElementById(id);
     const CIRC = 2 * Math.PI * 65;
 
@@ -545,6 +547,7 @@
     function pushChart(fs, ms) {
         if (!chart) return;
         const t = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+        // Values already zeroed by updateStats when idle — push them directly
         chartLabels.push(t); fileScores.push(+fs); mouseScores.push(+ms);
         if (chartLabels.length > 40) { chartLabels.shift(); fileScores.shift(); mouseScores.shift(); }
         chart.data.labels = chartLabels;
@@ -587,28 +590,35 @@
         const ms = parseFloat(stats.mouse_anomaly_score || 0);
         const ops = stats.file_operations || {};
 
+        // Mirror the same idle thresholds used by the chart line so cards and
+        // graph stay in sync: score displays as 0 while there is no activity.
+        const fileIdle  = lastFileEventTime  === 0 || (Date.now() - lastFileEventTime)  > 5000;
+        const mouseIdle = lastMouseEventTime === 0 || (Date.now() - lastMouseEventTime) > 2000;
+        const dfs = fileIdle  ? 0 : fs;   // display file score
+        const dms = mouseIdle ? 0 : ms;   // display mouse score
+
         $('file-events').textContent  = fe.toLocaleString();
         $('mouse-events').textContent = me.toLocaleString();
         $('total-anomalies').textContent = (fa + ma).toLocaleString();
-        $('file-score-val').textContent  = fs.toFixed(3);
-        $('mouse-score-display').textContent = ms.toFixed(3);
+        $('file-score-val').textContent  = dfs.toFixed(3);
+        $('mouse-score-display').textContent = dms.toFixed(3);
 
-        const fb = $('file-bar'); fb.style.width = (fs*100)+'%'; fb.className = 'stat-bar-fill ' + scoreBarClass(fs);
-        $('mouse-bar').style.width = (ms*100)+'%';
-        const fsb = $('file-score-bar'); fsb.style.width = (fs*100)+'%'; fsb.className = 'stat-bar-fill ' + scoreBarClass(fs);
+        const fb = $('file-bar'); fb.style.width = (dfs*100)+'%'; fb.className = 'stat-bar-fill ' + scoreBarClass(dfs);
+        $('mouse-bar').style.width = (dms*100)+'%';
+        const fsb = $('file-score-bar'); fsb.style.width = (dfs*100)+'%'; fsb.className = 'stat-bar-fill ' + scoreBarClass(dfs);
         const total = fa+ma, rate = (fe+me) > 0 ? total/(fe+me) : 0;
         $('anomaly-bar').style.width = (rate*100)+'%';
         $('anomaly-rate-badge').textContent = (rate*100).toFixed(1) + '% RATE';
 
         const fBadge = $('file-anomaly-badge');
-        fBadge.className = 'stat-badge ' + scoreBadgeClass(fs);
-        fBadge.textContent = scoreBadgeText(fs);
+        fBadge.className = 'stat-badge ' + scoreBadgeClass(dfs);
+        fBadge.textContent = scoreBadgeText(dfs);
         const mBadge = $('mouse-anomaly-badge');
-        mBadge.className = 'stat-badge ' + scoreBadgeClass(ms);
-        mBadge.textContent = scoreBadgeText(ms);
+        mBadge.className = 'stat-badge ' + scoreBadgeClass(dms);
+        mBadge.textContent = scoreBadgeText(dms);
         const fsBadge = $('file-score-badge');
-        fsBadge.className = 'stat-badge ' + scoreBadgeClass(fs);
-        fsBadge.textContent = fs > 0.6 ? 'HIGH RISK' : fs > 0.3 ? 'ELEVATED' : 'LOW RISK';
+        fsBadge.className = 'stat-badge ' + scoreBadgeClass(dfs);
+        fsBadge.textContent = dfs > 0.6 ? 'HIGH RISK' : dfs > 0.3 ? 'ELEVATED' : 'LOW RISK';
 
         const created = ops.created||0, modified = ops.modified||0, deleted = ops.deleted||0;
         const opMax = Math.max(created, modified, deleted, 1);
@@ -619,8 +629,8 @@
         $('op-modified-bar').style.width = (modified/opMax*100)+'%';
         $('op-deleted-bar').style.width  = (deleted/opMax*100)+'%';
 
-        pushChart(fs, ms);
-        updateGauge(fs, ms);
+        pushChart(dfs, dms);
+        updateGauge(dfs, dms);
     }
 
     function renderFeed() {
@@ -730,8 +740,8 @@
             else if (d.status === 'stopped') setLive(false);
         });
         socket.on('stats_update', stats => updateStats(stats));
-        socket.on('file_event', ev => addToFeed({ _type:'file', operation:ev.type, path:ev.filename, time:ev.timestamp, anomaly_score:ev.anomaly_score }));
-        socket.on('mouse_event', ev => addToFeed({ _type:'mouse', action:ev.type, details:`(${ev.x}, ${ev.y})`, time:ev.timestamp, anomaly_score:ev.anomaly_score }));
+        socket.on('file_event', ev => { lastFileEventTime = Date.now(); addToFeed({ _type:'file', operation:ev.type, path:ev.filename, time:ev.timestamp, anomaly_score:ev.anomaly_score }); });
+        socket.on('mouse_event', ev => { lastMouseEventTime = Date.now(); addToFeed({ _type:'mouse', action:ev.type, details:`(${ev.x}, ${ev.y})`, time:ev.timestamp, anomaly_score:ev.anomaly_score }); });
         socket.on('anomaly_alert', alert => addToFeed({ _type:'alert', operation:'ANOMALY DETECTED', path:alert.message, time:alert.timestamp, anomaly_score:alert.score }));
         socket.on('stats_cleared', () => {
             allFeedItems = []; reportActivities = [];

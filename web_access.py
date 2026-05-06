@@ -22,7 +22,13 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'web-access-monitor-secret-key'
-socketio = SocketIO(app, cors_allowed_origins="*", logger=False, engineio_logger=False)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',
+    logger=False,
+    engineio_logger=False,
+)
 
 # ─── ML Model Paths ───────────────────────────────────────────────────────────
 RESTRICTED_DIR          = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'restricted')

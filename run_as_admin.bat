@@ -1,39 +1,65 @@
 @echo off
+setlocal EnableExtensions
+
 echo ========================================
-echo Network Flow Monitor - Real Traffic Capture
+echo CyberWatch - Run as Administrator
+echo (real packet capture needs admin on Windows)
 echo ========================================
 echo.
-echo Requesting Administrator privileges...
+echo PowerShell users: do NOT use "cd /d" ^(that is cmd.exe syntax^).
+echo   cd /d "%~dp0"   ^<- wrong in PowerShell
+echo   Use instead:
+echo     Set-Location "%~dp0"
+echo     python app.py
+echo   Or:  powershell -ExecutionPolicy Bypass -File "%~dp0run_stack.ps1"
+echo   Or elevated:  powershell -ExecutionPolicy Bypass -File "%~dp0run_as_admin.ps1"
 echo.
 
-:: Check if running as admin
+:: Re-launch elevated if needed
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Not running as administrator. Restarting with admin rights...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
-    exit /b
+    echo Requesting Administrator privileges...
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b 0
 )
 
-echo ✓ Running with Administrator privileges
+echo Running with Administrator privileges.
 echo.
 
-:: Navigate to project directory
-cd /d "D:\Desktop\Ayesha Nangi SLIIT - Group\Group 1\Very New"
+:: MUST use the folder where this .bat lives — elevated shortcuts start in System32
+cd /d "%~dp0"
+if not exist "app.py" (
+    echo ERROR: app.py not found in:
+    echo   %CD%
+    echo Place this batch file in your Research project folder ^(next to app.py^).
+    pause
+    exit /b 1
+)
 
-:: Install required packages if not installed
-echo Installing required packages...
-python -m pip install flask flask-socketio scapy psutil netifaces python-socketio --quiet
+echo Project directory: %CD%
+echo.
+
+:: netifaces is optional and needs MSVC to build — not used by network.py
+echo Installing / updating Python packages ^(skipping netifaces^)...
+python -m pip install -q Flask Flask-SocketIO Flask-CORS python-socketio scapy psutil eventlet python-dotenv numpy pynput tensorflow joblib scikit-learn
+if %errorlevel% neq 0 (
+    echo pip reported an error; trying minimal set...
+    python -m pip install -q Flask Flask-SocketIO python-socketio scapy psutil
+)
 
 echo.
 echo ========================================
-echo Starting Network Flow Monitor
+echo Starting unified dashboard ^(app.py^)
 echo ========================================
-echo Server URL: http://localhost:5000
-echo Mode: REAL PACKET CAPTURE
+echo Main dashboard : http://localhost:5000
+echo Network monitor: http://localhost:5001
 echo ========================================
 echo.
 
-:: Run the application
 python app.py
+if %errorlevel% neq 0 (
+    echo.
+    echo Python exited with error %errorlevel%.
+)
 
 pause
