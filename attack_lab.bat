@@ -2,6 +2,28 @@
 setlocal enabledelayedexpansion
 title Network Attack Lab
 
+:PY_SETUP
+set "PY="
+where py >nul 2>&1 && set "PY=py -3"
+if not defined PY (
+  where python >nul 2>&1 && set "PY=python"
+)
+if not defined PY (
+  cls
+  echo ============================================================
+  echo   ERROR: Python not found
+  echo ============================================================
+  echo.
+  echo Install Python 3, or enable the "py" launcher.
+  echo Then run this file again.
+  echo.
+  pause
+  goto PY_SETUP
+)
+
+:MAIN_MENU
+:MAIN_MENU
+:MAIN_MENU
 :MAIN_MENU
 cls
 echo ============================================================
@@ -44,13 +66,24 @@ goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
 :SYSTEM_CHECK
+:SYSTEM_CHECK
 cls
 echo ============================================================
 echo   SYSTEM CHECK
 echo ============================================================
 echo.
-python -c "
+%PY% -c "
 import socket
+import json, urllib.request
+
+def can_get(url):
+    try:
+        urllib.request.urlopen(url, timeout=2).read()
+        return True
+    except Exception:
+        return False
+
+print('Dashboard API:', 'OK' if can_get('http://localhost:5001/api/status') else 'FAIL (is network.py running?)')
 PORTS = [(2222,'SSH'),(2121,'FTP'),(2323,'Telnet'),(13389,'RDP'),(5901,'VNC'),(7001,'ScanTrap'),(7005,'ScanTrap'),(7010,'ScanTrap')]
 ok = fail = 0
 for port, name in PORTS:
@@ -68,16 +101,18 @@ print()
 print('All OK - ready to test.' if fail == 0 else f'WARNING: {fail} port(s) not reachable. Is app.py running?')
 "
 echo.
-pause
+echo Returning to menu in 2 seconds...
+timeout /t 2 /nobreak >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
 :ATTACK_SSH
+:ATTACK_SSH
 cls
-echo   Running: SSH Brute Force (25 attempts, 0.2s delay) -> port 2222
+echo   Running: SSH Brute Force (25 attempts, 0.35s delay) -> port 2222
 echo   Watch: http://localhost:5001
 echo.
-python -c "
+%PY% -c "
 import socket, time
 for i in range(25):
     s = socket.socket()
@@ -85,21 +120,24 @@ for i in range(25):
     try: s.connect(('127.0.0.1', 2222))
     except: pass
     finally: s.close()
-    time.sleep(0.2)
+    time.sleep(0.35)
     if (i+1) % 5 == 0: print(f'  {i+1}/25 attempts')
 print('Done. Check dashboard for SSH-Patator.')
 "
+%PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-pause
+echo Returning to menu in 2 seconds...
+timeout /t 2 /nobreak >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
 :ATTACK_FTP
+:ATTACK_FTP
 cls
-echo   Running: FTP Brute Force (25 attempts, 0.2s delay) -> port 2121
+echo   Running: FTP Brute Force (25 attempts, 0.35s delay) -> port 2121
 echo   Watch: http://localhost:5001
 echo.
-python -c "
+%PY% -c "
 import socket, time
 for i in range(25):
     s = socket.socket()
@@ -107,21 +145,24 @@ for i in range(25):
     try: s.connect(('127.0.0.1', 2121))
     except: pass
     finally: s.close()
-    time.sleep(0.2)
+    time.sleep(0.35)
     if (i+1) % 5 == 0: print(f'  {i+1}/25 attempts')
 print('Done. Check dashboard for FTP-Patator.')
 "
+%PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-pause
+echo Returning to menu in 2 seconds...
+timeout /t 2 /nobreak >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
 :ATTACK_RDP
+:ATTACK_RDP
 cls
-echo   Running: RDP Brute Force (25 attempts, 0.2s delay) -> port 13389
+echo   Running: RDP Brute Force (25 attempts, 0.35s delay) -> port 13389
 echo   Watch: http://localhost:5001
 echo.
-python -c "
+%PY% -c "
 import socket, time
 for i in range(25):
     s = socket.socket()
@@ -129,21 +170,24 @@ for i in range(25):
     try: s.connect(('127.0.0.1', 13389))
     except: pass
     finally: s.close()
-    time.sleep(0.2)
+    time.sleep(0.35)
     if (i+1) % 5 == 0: print(f'  {i+1}/25 attempts')
 print('Done. Check dashboard for Brute Force.')
 "
+%PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-pause
+echo Returning to menu in 2 seconds...
+timeout /t 2 /nobreak >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
 :ATTACK_TELNET
+:ATTACK_TELNET
 cls
-echo   Running: Telnet Brute Force (25 attempts, 0.2s delay) -> port 2323
+echo   Running: Telnet Brute Force (25 attempts, 0.35s delay) -> port 2323
 echo   Watch: http://localhost:5001
 echo.
-python -c "
+%PY% -c "
 import socket, time
 for i in range(25):
     s = socket.socket()
@@ -151,21 +195,24 @@ for i in range(25):
     try: s.connect(('127.0.0.1', 2323))
     except: pass
     finally: s.close()
-    time.sleep(0.2)
+    time.sleep(0.35)
     if (i+1) % 5 == 0: print(f'  {i+1}/25 attempts')
 print('Done. Check dashboard for Brute Force.')
 "
+%PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-pause
+echo Returning to menu in 2 seconds...
+timeout /t 2 /nobreak >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
 :ATTACK_VNC
+:ATTACK_VNC
 cls
-echo   Running: VNC Brute Force (25 attempts, 0.2s delay) -> port 5901
+echo   Running: VNC Brute Force (25 attempts, 0.35s delay) -> port 5901
 echo   Watch: http://localhost:5001
 echo.
-python -c "
+%PY% -c "
 import socket, time
 for i in range(25):
     s = socket.socket()
@@ -173,21 +220,24 @@ for i in range(25):
     try: s.connect(('127.0.0.1', 5901))
     except: pass
     finally: s.close()
-    time.sleep(0.2)
+    time.sleep(0.35)
     if (i+1) % 5 == 0: print(f'  {i+1}/25 attempts')
 print('Done. Check dashboard for Brute Force.')
 "
+%PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-pause
+echo Returning to menu in 2 seconds...
+timeout /t 2 /nobreak >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
+:DDOS_SSH
 :DDOS_SSH
 cls
 echo   Running: SSH DDoS Flood (200 connections, no delay) -> port 2222
 echo   Watch: http://localhost:5001
 echo.
-python -c "
+%PY% -c "
 import socket, time
 t0 = time.time()
 for i in range(200):
@@ -201,16 +251,19 @@ for i in range(200):
 print(f'Done in {time.time()-t0:.1f}s. Check dashboard for DDoS.')
 "
 echo.
-pause
+%PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
+echo Returning to menu in 2 seconds...
+timeout /t 2 /nobreak >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
+:DDOS_RDP
 :DDOS_RDP
 cls
 echo   Running: RDP DDoS Flood (200 connections, no delay) -> port 13389
 echo   Watch: http://localhost:5001
 echo.
-python -c "
+%PY% -c "
 import socket, time
 t0 = time.time()
 for i in range(200):
@@ -224,36 +277,38 @@ for i in range(200):
 print(f'Done in {time.time()-t0:.1f}s. Check dashboard for DDoS.')
 "
 echo.
-pause
+%PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
+echo Returning to menu in 2 seconds...
+timeout /t 2 /nobreak >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
+:SCAN
 :SCAN
 cls
 echo   Running: Port Scan (common ports + trap ports 7001-7010)
 echo   Watch: http://localhost:5001
 echo.
-python -c "
+%PY% -c "
 import socket, time
-ports = [21,22,23,25,53,80,110,135,139,143,443,445,3306,3389,5900,8080,
-         7001,7002,7003,7004,7005,7006,7007,7008,7009,7010]
-open_ports = []
+ports = [7001,7002,7003,7004,7005,7006,7007,7008,7009,7010]
 for p in ports:
     s = socket.socket()
     s.settimeout(0.3)
-    r = s.connect_ex(('127.0.0.1', p))
+    s.connect_ex(('127.0.0.1', p))
     s.close()
-    if r == 0:
-        open_ports.append(p)
-        print(f'  OPEN  {p}')
-    time.sleep(0.01)
-print(f'Scan done. Open: {open_ports}. Check dashboard for PortScan.')
+    print(f'  TRIED {p}')
+    time.sleep(0.05)
+print('Scan done. Check dashboard for PortScan.')
 "
 echo.
-pause
+%PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
+echo Returning to menu in 2 seconds...
+timeout /t 2 /nobreak >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
+:EXIT
 :EXIT
 endlocal
 exit /b 0
