@@ -204,7 +204,9 @@ class PacketAnomalyDetector:
 
     # ── internal helpers ──────────────────────────────────────────────────────
     def _reset_window_if_needed(self):
-        if time.time() - self._window_start > 60:
+        # Use a short 10-second sliding window to avoid false positives
+        # from slow-accumulating background traffic
+        if time.time() - self._window_start > 10:
             self._src_dst_ports.clear()
             self._src_pkts.clear()
             self._window_start = time.time()
@@ -229,55 +231,26 @@ class PacketAnomalyDetector:
     # ── public API ────────────────────────────────────────────────────────────
     def analyze(self, src, dst, protocol, size):
         """
-        Analyze one packet.  Returns a prediction dict or None
-        (None means this packet is skipped for emit-throttling).
+        Analyze one packet for stats only.
+        All attack detection is handled exclusively by the honeypot servers
+        (triggered via attack_lab.bat) — no auto-heuristics on live traffic.
         """
         with self._lock:
             self._reset_window_if_needed()
             self._pkt_counter += 1
 
-            src_ip   = self._extract_ip(src)
-            dst_port = self._extract_port(dst)
-
-            # Update trackers
-            if src_ip:
-                if dst_port:
-                    self._src_dst_ports[src_ip].add(dst_port)
-                self._src_pkts[src_ip] += 1
-
             # Throttle
             if self._pkt_counter % self._emit_every != 0:
                 return None
-
-            # ── Decision tree ──────────────────────────────────────────────
-            n_ports = len(self._src_dst_ports.get(src_ip, set())) if src_ip else 0
-            n_pkts  = self._src_pkts.get(src_ip, 0)             if src_ip else 0
 
             attack     = 'Benign'
             confidence = 0.94
             is_threat  = False
 
-            # Priority 4: labels match CIC-IDS-2017 label space
-            if n_ports >= 20:
-                attack, confidence, is_threat = 'PortScan',    0.83, True
-            elif n_pkts >= 300:
-                attack, confidence, is_threat = 'DDoS',        0.88, True
-            elif dst_port in self.SUSPICIOUS_PORTS:
-                attack, confidence, is_threat = 'Bot',         0.77, True
-            elif dst_port in self.BRUTE_PORTS and n_pkts >= 25:
-                attack, confidence, is_threat = 'SSH-Patator', 0.72, True
-            elif protocol == 'UDP' and size > 1200 and n_pkts >= 40:
-                attack, confidence, is_threat = 'DDoS',        0.69, True
-            elif n_pkts >= 150 and protocol in ('TCP', 'UDP'):
-                attack, confidence, is_threat = 'Infiltration', 0.65, True
-
             # Update aggregate stats
             self._total += 1
             self._conf_sum += confidence
-            if is_threat:
-                self._threat_count += 1
-            else:
-                self._normal_count += 1
+            self._normal_count += 1
             self._breakdown[attack] = self._breakdown.get(attack, 0) + 1
 
             return {
@@ -831,51 +804,10 @@ class NetworkMLModel:
 
     def _flow_heuristic(self, f):
         """
-        Rule-based detection on CIC-IDS flow features.
-        More accurate than per-packet rules because it uses flow statistics.
+        Flow heuristic fallback — disabled to prevent false positives on
+        normal background traffic. All attack detection is triggered only
+        via attack_lab.bat through the honeypot servers.
         """
-        dst_port   = f.get('Dst Port', 0)
-        tot_pkts   = f.get('Tot Fwd Pkts', 0) + f.get('Tot Bwd Pkts', 0)
-        flow_pkt_s = f.get('Flow Pkts/s', 0)
-        bwd_max    = f.get('Bwd Pkt Len Max', 0)
-        pkt_var    = f.get('Pkt Len Var', 0)
-        syn_cnt    = f.get('SYN Flag Cnt', 0)
-        rst_cnt    = f.get('RST Flag Cnt', 0)
-        fin_cnt    = f.get('FIN Flag Cnt', 0)
-        iat_mean   = f.get('Flow IAT Mean', 0)
-        fwd_pkts   = f.get('Tot Fwd Pkts', 0)
-        bwd_pkts   = f.get('Tot Bwd Pkts', 0)
-        down_up    = f.get('Down/Up Ratio', 1)
-        idle_mean  = f.get('Idle Mean', 0)
-        pkt_len_std = f.get('Pkt Len Std', 0)
-
-        BRUTE_PORTS = {22, 21, 23, 3389, 5900, 25, 3306}
-        SUSP_PORTS  = {4444, 1337, 31337, 6666, 6667, 12345, 9999}
-
-        # DoS/DDoS: very high packet rate + high SYN or tiny IAT
-        if flow_pkt_s > 1000 or (syn_cnt > 100 and tot_pkts > 200):
-            return 'DoS/DDoS', 0.87, True
-
-        # Port Scan: many SYNs, many RSTs, very short flows, low bwd pkt
-        if syn_cnt > 20 and rst_cnt > 10 and bwd_pkts < 5:
-            return 'PortScan', 0.84, True
-
-        # Brute Force: many pkts to auth port, low variance (same request repeated)
-        if dst_port in BRUTE_PORTS and fwd_pkts > 30 and pkt_len_std < 50:
-            return 'Brute Force', 0.76, True
-
-        # Bot Activity: connection to suspicious port or unusual pattern
-        if dst_port in SUSP_PORTS:
-            return 'Bot Activity', 0.78, True
-
-        # Infiltration: long-lived flow, high bwd bytes, low fwd (exfiltration)
-        if bwd_max > 1400 and down_up > 5 and idle_mean > 0:
-            return 'Infiltration', 0.66, True
-
-        # XSS / Web attacks: HTTP/HTTPS with high pkt variance, moderate rate
-        if dst_port in (80, 443, 8080, 8443) and pkt_var > 100000 and fwd_pkts > 10:
-            return 'Web Attack', 0.61, True
-
         return 'Benign', 0.93, False
 
 
@@ -989,124 +921,197 @@ class NetworkMonitor:
 
 
     @staticmethod
-    def _make_flow_features(dst_port, size, hint='benign'):
+    def _make_flow_features(dst_port, size):
         """
-        Synthesise a CIC-IDS-2017 feature dict that looks like the given
-        traffic hint so the real ML model can classify it meaningfully.
+        Synthesise a CIC-IDS-2017 feature dict for a normal/benign connection
+        so the ML model can classify passive-mode traffic.
+        Attack testing is handled exclusively via attack_lab.bat.
         """
         import random as _r
         f = {k: 0.0 for k in NetworkMLModel.FEATURE_COLS}
-        f['Dst Port'] = float(dst_port)
-
-        if hint == 'ddos':
-            pkts = _r.randint(500, 2000)
-            dur  = _r.uniform(0.05, 0.5)
-            pkt_sz = _r.randint(60, 80)
-            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': 2,
-                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': 2 * pkt_sz,
-                      'Flow Duration': dur,
-                      'Flow Pkts/s': pkts / max(dur, 1e-6),
-                      'Flow Byts/s': pkts * pkt_sz / max(dur, 1e-6),
-                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
-                      'Flow IAT Std': 5.0, 'Flow IAT Max': 10.0, 'Flow IAT Min': 0.1,
-                      'SYN Flag Cnt': _r.randint(200, 800),
-                      'Fwd Pkts/s': pkts / max(dur, 1e-6),
-                      'Pkt Len Min': pkt_sz, 'Pkt Len Max': pkt_sz + 4,
-                      'Pkt Len Mean': pkt_sz, 'Pkt Len Std': 2.0, 'Pkt Len Var': 4.0,
-                      'Pkt Size Avg': pkt_sz,
-                      'Init Fwd Win Byts': 0, 'Init Bwd Win Byts': 0})
-
-        elif hint == 'bruteforce':
-            pkts = _r.randint(50, 200)
-            dur  = _r.uniform(5, 30)
-            pkt_sz = _r.randint(60, 120)
-            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': pkts,
-                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': pkts * pkt_sz,
-                      'Flow Duration': dur,
-                      'Flow Pkts/s': pkts * 2 / max(dur, 1e-6),
-                      'Flow Byts/s': pkts * 2 * pkt_sz / max(dur, 1e-6),
-                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
-                      'Flow IAT Std': 10.0, 'Flow IAT Max': 50.0, 'Flow IAT Min': 1.0,
-                      'SYN Flag Cnt': pkts, 'ACK Flag Cnt': pkts,
-                      'Pkt Len Min': pkt_sz - 5, 'Pkt Len Max': pkt_sz + 5,
-                      'Pkt Len Mean': pkt_sz, 'Pkt Len Std': 8.0, 'Pkt Len Var': 64.0,
-                      'Pkt Size Avg': pkt_sz,
-                      'Fwd Pkts/s': pkts / max(dur, 1e-6),
-                      'Bwd Pkts/s': pkts / max(dur, 1e-6),
-                      'Init Fwd Win Byts': 65535, 'Init Bwd Win Byts': 65535,
-                      'Fwd Act Data Pkts': pkts})
-
-        elif hint == 'portscan':
-            pkts = _r.randint(100, 500)
-            dur  = _r.uniform(1, 10)
-            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': _r.randint(0, 5),
-                      'TotLen Fwd Pkts': pkts * 40, 'TotLen Bwd Pkts': 0,
-                      'Flow Duration': dur,
-                      'Flow Pkts/s': pkts / max(dur, 1e-6),
-                      'SYN Flag Cnt': pkts, 'RST Flag Cnt': _r.randint(50, 200),
-                      'Flow IAT Mean': 500.0, 'Flow IAT Std': 20.0,
-                      'Pkt Len Min': 40, 'Pkt Len Max': 44,
-                      'Pkt Len Mean': 40.0, 'Pkt Len Std': 1.0, 'Pkt Len Var': 1.0,
-                      'Pkt Size Avg': 40.0,
-                      'Init Fwd Win Byts': 1024, 'Init Bwd Win Byts': 0})
-
-        elif hint == 'dos':
-            pkts = _r.randint(1000, 5000)
-            dur  = _r.uniform(1, 5)
-            pkt_sz = _r.randint(800, 1400)
-            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': _r.randint(1, 10),
-                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': 0,
-                      'Flow Duration': dur,
-                      'Flow Pkts/s': pkts / max(dur, 1e-6),
-                      'Flow Byts/s': pkts * pkt_sz / max(dur, 1e-6),
-                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
-                      'Flow IAT Std': 1.0, 'Flow IAT Max': 5.0, 'Flow IAT Min': 0.1,
-                      'PSH Flag Cnt': pkts, 'ACK Flag Cnt': pkts,
-                      'Pkt Len Min': pkt_sz - 50, 'Pkt Len Max': pkt_sz,
-                      'Pkt Len Mean': pkt_sz - 25, 'Pkt Len Std': 20.0,
-                      'Pkt Size Avg': pkt_sz - 25,
-                      'Init Fwd Win Byts': 65535, 'Init Bwd Win Byts': 65535,
-                      'Fwd Act Data Pkts': pkts})
-
-        elif hint == 'bot':
-            pkts = _r.randint(10, 50)
-            dur  = _r.uniform(60, 300)
-            pkt_sz = _r.randint(100, 400)
-            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': pkts,
-                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': pkts * pkt_sz,
-                      'Flow Duration': dur,
-                      'Flow Pkts/s': pkts * 2 / max(dur, 1e-6),
-                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
-                      'Flow IAT Std': 5000.0, 'Flow IAT Max': 30000.0, 'Flow IAT Min': 100.0,
-                      'ACK Flag Cnt': pkts, 'PSH Flag Cnt': pkts,
-                      'Pkt Len Min': pkt_sz - 20, 'Pkt Len Max': pkt_sz + 20,
-                      'Pkt Len Mean': pkt_sz, 'Pkt Len Std': 15.0, 'Pkt Len Var': 225.0,
-                      'Pkt Size Avg': pkt_sz,
-                      'Idle Mean': dur / 4 * 1e6, 'Idle Max': dur / 2 * 1e6,
-                      'Init Fwd Win Byts': 65535, 'Init Bwd Win Byts': 65535})
-
-        else:  # benign
-            pkts = _r.randint(5, 40)
-            dur  = _r.uniform(0.5, 10)
-            pkt_sz = _r.randint(200, 1400)
-            bwd_pkts = _r.randint(3, pkts)
-            f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': bwd_pkts,
-                      'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': bwd_pkts * pkt_sz,
-                      'Flow Duration': dur,
-                      'Flow Pkts/s': (pkts + bwd_pkts) / max(dur, 1e-6),
-                      'Flow Byts/s': (pkts + bwd_pkts) * pkt_sz / max(dur, 1e-6),
-                      'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
-                      'Flow IAT Std': 1000.0, 'Flow IAT Max': 5000.0, 'Flow IAT Min': 100.0,
-                      'SYN Flag Cnt': 1, 'FIN Flag Cnt': 1, 'ACK Flag Cnt': pkts + bwd_pkts,
-                      'PSH Flag Cnt': _r.randint(1, pkts),
-                      'Pkt Len Min': 54, 'Pkt Len Max': pkt_sz,
-                      'Pkt Len Mean': pkt_sz * 0.6, 'Pkt Len Std': pkt_sz * 0.2,
-                      'Pkt Len Var': (pkt_sz * 0.2) ** 2,
-                      'Pkt Size Avg': pkt_sz * 0.6,
-                      'Down/Up Ratio': bwd_pkts / max(pkts, 1),
-                      'Init Fwd Win Byts': 65535, 'Init Bwd Win Byts': 65535,
-                      'Fwd Act Data Pkts': pkts})
+        f['Dst Port']  = float(dst_port)
+        pkts     = _r.randint(5, 40)
+        dur      = _r.uniform(0.5, 10)
+        pkt_sz   = size if size else _r.randint(200, 1400)
+        bwd_pkts = _r.randint(3, pkts)
+        f.update({'Tot Fwd Pkts': pkts, 'Tot Bwd Pkts': bwd_pkts,
+                  'TotLen Fwd Pkts': pkts * pkt_sz, 'TotLen Bwd Pkts': bwd_pkts * pkt_sz,
+                  'Flow Duration': dur,
+                  'Flow Pkts/s': (pkts + bwd_pkts) / max(dur, 1e-6),
+                  'Flow Byts/s': (pkts + bwd_pkts) * pkt_sz / max(dur, 1e-6),
+                  'Flow IAT Mean': dur / max(pkts, 1) * 1e6,
+                  'Flow IAT Std': 1000.0, 'Flow IAT Max': 5000.0, 'Flow IAT Min': 100.0,
+                  'SYN Flag Cnt': 1, 'FIN Flag Cnt': 1, 'ACK Flag Cnt': pkts + bwd_pkts,
+                  'PSH Flag Cnt': _r.randint(1, pkts),
+                  'Pkt Len Min': 54, 'Pkt Len Max': pkt_sz,
+                  'Pkt Len Mean': pkt_sz * 0.6, 'Pkt Len Std': pkt_sz * 0.2,
+                  'Pkt Len Var': (pkt_sz * 0.2) ** 2,
+                  'Pkt Size Avg': pkt_sz * 0.6,
+                  'Down/Up Ratio': bwd_pkts / max(pkts, 1),
+                  'Init Fwd Win Byts': 65535, 'Init Bwd Win Byts': 65535,
+                  'Fwd Act Data Pkts': pkts})
         return f
+
+    # Honeypot port mapping: honeypot_port → (real_auth_port, service_label)
+    # Port 7000-7009 range used as multi-port trap for PortScan detection
+    HONEYPOT_MAP = {
+        2222:  (22,   'SSH'),
+        2121:  (21,   'FTP'),
+        2323:  (23,   'Telnet'),
+        13389: (3389, 'RDP'),
+        5901:  (5900, 'VNC'),
+        # Port-scan trap ports (hitting several of these = PortScan)
+        7001:  (7001, 'SCAN_TRAP'),
+        7002:  (7002, 'SCAN_TRAP'),
+        7003:  (7003, 'SCAN_TRAP'),
+        7004:  (7004, 'SCAN_TRAP'),
+        7005:  (7005, 'SCAN_TRAP'),
+        7006:  (7006, 'SCAN_TRAP'),
+        7007:  (7007, 'SCAN_TRAP'),
+        7008:  (7008, 'SCAN_TRAP'),
+        7009:  (7009, 'SCAN_TRAP'),
+        7010:  (7010, 'SCAN_TRAP'),
+    }
+    # Shared conn_times dict written by honeypot threads, read by detector thread
+    _honeypot_conn_times: dict = {}
+
+    def _start_honeypots(self):
+        """
+        Bind lightweight TCP servers on honeypot ports.
+        Always called at startup regardless of capture mode.
+        Detection runs in a separate thread so it works in both
+        LIVE CAPTURE and PASSIVE MONITOR modes.
+        """
+        import socketserver
+        from collections import defaultdict, deque
+
+        conn_times: dict = defaultdict(deque)
+        NetworkMonitor._honeypot_conn_times = conn_times   # share with detector
+
+        for hport, (real_port, svc) in self.HONEYPOT_MAP.items():
+            class _Handler(socketserver.BaseRequestHandler):
+                _rp  = real_port
+                _svc = svc
+                _ct  = conn_times
+                def handle(self):
+                    self._ct[self._rp].append(time.time())
+                    try:
+                        self.request.sendall(b'Honeypot\r\n')
+                    except OSError:
+                        pass
+
+            try:
+                srv = socketserver.TCPServer(('', hport), _Handler)
+                srv.allow_reuse_address = True
+                threading.Thread(target=srv.serve_forever, daemon=True,
+                                 name=f'honeypot-{hport}').start()
+                print(f"  🍯 Honeypot :{hport} → {svc} (:{real_port})")
+            except OSError:
+                pass  # port in use, skip
+
+        # Start the detection loop in its own thread
+        threading.Thread(target=self._honeypot_detector,
+                         args=(conn_times,), daemon=True,
+                         name='HoneypotDetector').start()
+        print("  ✅ Honeypot attack detector started")
+
+    def _honeypot_detector(self, conn_times):
+        """
+        Runs forever. Every second checks conn_times for:
+          - Brute Force : 15+ connections to an auth port in 60 s (slow rate)
+          - DDoS        : 15+ connections to an auth port in 5 s  (fast flood)
+          - Port Scan   : 5+ different scan-trap ports hit in 30 s
+        Emits socketio events and updates stats for the dashboard.
+        """
+        from collections import deque
+        import random
+
+        BRUTE_WINDOW = 60.0   # seconds
+        DDOS_WINDOW  =  5.0   # seconds — fast flood
+        SCAN_WINDOW  = 30.0   # seconds
+        BRUTE_THRESH = 15
+        DDOS_THRESH  = 30     # connections in 5 s = 6 conn/s → flood
+        SCAN_THRESH  =  5     # unique trap ports hit
+
+        SCAN_TRAP_PORTS = {v[0] for v in self.HONEYPOT_MAP.values()
+                           if v[1] == 'SCAN_TRAP'}
+        AUTH_PORT_LABEL = {22: 'SSH-Patator', 21: 'FTP-Patator',
+                           23: 'Brute Force', 3389: 'Brute Force',
+                           5900: 'Brute Force'}
+
+        scan_hit_times: deque = deque()   # timestamps of scan-trap hits
+
+        PORT_PROTO = {22: 'SSH', 21: 'FTP', 23: 'Telnet', 3389: 'RDP', 5900: 'VNC'}
+
+        while True:
+            time.sleep(1.0)
+            now = time.time()
+
+            # ── Port Scan detection ───────────────────────────────────────
+            # Count how many UNIQUE scan-trap ports were hit in SCAN_WINDOW
+            for rp in SCAN_TRAP_PORTS:
+                dq = conn_times.get(rp)
+                if dq:
+                    scan_hit_times.extend(dq)
+                    dq.clear()
+
+            while scan_hit_times and scan_hit_times[0] < now - SCAN_WINDOW:
+                scan_hit_times.popleft()
+
+            if len(scan_hit_times) >= SCAN_THRESH:
+                self._emit_attack('PortScan', 0.85,
+                                  '127.0.0.1:???', '127.0.0.1:multi', 'TCP')
+                scan_hit_times.clear()
+
+            # ── Brute Force / DDoS detection ──────────────────────────────
+            for real_port, label in AUTH_PORT_LABEL.items():
+                dq = conn_times.get(real_port)
+                if not dq:
+                    continue
+
+                # Prune outside brute-force window
+                while dq and dq[0] < now - BRUTE_WINDOW:
+                    dq.popleft()
+                total = len(dq)
+                if total < BRUTE_THRESH:
+                    continue
+
+                # Count connections in short DDoS window
+                recent = sum(1 for t in dq if t >= now - DDOS_WINDOW)
+                if recent >= DDOS_THRESH:
+                    attack_label = 'DDoS'
+                    conf = min(0.70 + recent * 0.005, 0.99)
+                else:
+                    attack_label = label
+                    conf = min(0.60 + total * 0.01, 0.99)
+
+                proto = PORT_PROTO.get(real_port, 'TCP')
+                src   = f"attacker:{random.randint(40000, 65000)}"
+                dst   = f"127.0.0.1:{real_port}"
+                print(f"  🚨 {attack_label} DETECTED port:{real_port} "
+                      f"total:{total} recent5s:{recent} → {conf:.1%}")
+                self._emit_attack(attack_label, conf, src, dst, proto)
+                dq.clear()
+
+    def _emit_attack(self, label, conf, src, dst, proto):
+        """Emit one attack prediction to the dashboard and update stats."""
+        is_threat = True
+        ml_pred = {
+            'attack_type': label, 'confidence': conf,
+            'is_threat':   is_threat,
+            'timestamp':   datetime.now().strftime('%H:%M:%S.%f')[:-3],
+            'src': src, 'dst': dst, 'protocol': proto,
+        }
+        ml_anomaly_detector.record_simulated(label, conf, is_threat)
+        socketio.emit('ml_prediction', ml_pred)
+        with stats_lock:
+            stats['connections'].insert(0, {
+                'src': src, 'dst': dst, 'protocol': proto,
+                'size': 80, 'time': ml_pred['timestamp'],
+                'attack_type': label, 'is_threat': is_threat,
+                'confidence': conf,
+            })
+            stats['connections'] = stats['connections'][:200]
 
     # ── Passive monitor (no admin needed — uses psutil) ───────────────────────
     def passive_monitor(self):
@@ -1114,8 +1119,10 @@ class NetworkMonitor:
         Monitors real network activity using psutil without requiring admin.
         Reads per-NIC byte/packet counters, derives rates, lists active
         connections and classifies each one through the ML model.
+        Also detects brute-force attacks via honeypot servers + frequency tracking.
         """
         import psutil, random
+        from collections import defaultdict, deque
         print("  📊 PASSIVE MODE: Real network stats via psutil (no Scapy needed)")
         prev_io   = psutil.net_io_counters(pernic=False)
         prev_time = time.time()
@@ -1124,6 +1131,10 @@ class NetworkMonitor:
             80: 'HTTP', 443: 'HTTPS', 22: 'SSH', 21: 'FTP', 25: 'SMTP',
             53: 'DNS',  3306: 'MySQL', 3389: 'RDP', 8080: 'HTTP',
         }
+        AUTH_PORTS  = {21, 22, 23, 3389, 5900, 3306}
+
+        # Use the shared conn_times dict started by _start_honeypots()
+        _conn_times = NetworkMonitor._honeypot_conn_times
 
         while self.sniffing:
             try:
@@ -1156,14 +1167,16 @@ class NetworkMonitor:
                 self.byte_count    += int(bytes_delta)
                 self.packet_count  += int(packets_delta)
 
-                # Get active connections and classify each through ML model
+                # Get ALL connections (not just ESTABLISHED) to catch brute-force
                 try:
                     conns = psutil.net_connections(kind='inet')
                 except (psutil.AccessDenied, PermissionError):
                     conns = []
 
+                # ── Normal ESTABLISHED connection classification ───────────────
+                # (Attack detection handled by _honeypot_detector thread)
                 seen = set()
-                for c in conns[:30]:  # limit to 30 to avoid flooding
+                for c in conns[:30]:
                     if c.status not in ('ESTABLISHED', 'CLOSE_WAIT'):
                         continue
                     laddr = c.laddr
@@ -1182,7 +1195,7 @@ class NetworkMonitor:
                     pkt_sz   = random.randint(200, 1400)
 
                     # Build flow features and run through ML model
-                    feat = self._make_flow_features(dst_port, pkt_sz, 'benign')
+                    feat = self._make_flow_features(dst_port, pkt_sz)
                     feat['Dst Port']      = float(dst_port)
                     feat['Flow Pkts/s']   = packet_rate / max(len(conns), 1)
                     feat['Flow Byts/s']   = byte_rate   / max(len(conns), 1)
@@ -1825,6 +1838,17 @@ def get_interfaces():
     return jsonify(interfaces)
 
 
+@app.route('/api/start_monitoring', methods=['POST'])
+def api_start_monitoring():
+    """HTTP endpoint to start monitoring (triggers passive mode + honeypots)."""
+    data = request.get_json(silent=True) or {}
+    iface = data.get('interface', 'all')
+    if not monitor.sniffing:
+        result = monitor.start_capture(iface)
+        return jsonify({'status': 'started' if result else 'passive', 'interface': iface})
+    return jsonify({'status': 'already_running', 'interface': monitor.interface})
+
+
 @app.route('/api/status')
 def get_status():
     return jsonify({
@@ -1961,6 +1985,16 @@ if __name__ == '__main__':
     conn_monitor.start_monitoring(on_connection_change)
     print("✅ Connection monitor started")
     print("✅ ML Anomaly Detector ready (Statistical engine — no model file needed)")
+
+    # Always start honeypots so attack_lab.bat works in both LIVE and PASSIVE mode
+    monitor._start_honeypots()
+
+    # Auto-start passive monitoring (stats + ML classification of live connections)
+    if not REAL_CAPTURE_AVAILABLE:
+        _t = threading.Thread(target=monitor.start_capture,
+                              args=('all',), daemon=True, name='AutoPassiveStart')
+        _t.start()
+        print("  📊 Auto-starting Passive Monitor…")
 
     print(f"\n📡 Server URL: http://localhost:{port}")
     print(f"🎯 Mode: {'🔴 REAL CAPTURE' if REAL_CAPTURE_AVAILABLE else '⚠️  REQUIRES ADMINISTRATOR'}")
