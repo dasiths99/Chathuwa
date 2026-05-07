@@ -138,24 +138,48 @@ tailwind.config = {
 
 <!-- ═══ SECTION 1: DASHBOARD ═══ -->
 <div id="section-dashboard" class="section active">
-  <div class="mb-6">
-    <h1 class="text-2xl font-bold text-white">Web Access Behavior Analysis</h1>
-    <p class="text-cb-muted text-sm mt-1">Real-time encrypted traffic monitoring — no payload decryption</p>
+  <div class="mb-6 flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Web Access Behavior Analysis</h1>
+      <p class="text-cb-muted text-sm mt-1">Real-time encrypted traffic monitoring — no payload decryption</p>
+    </div>
+    <button onclick="resetSession()" class="bg-cb-card border border-cb-border text-cb-muted px-4 py-2 rounded-lg text-sm hover:border-cb-red hover:text-cb-red transition">🗑 Reset Session Data</button>
   </div>
   <!-- Row 1 stat cards -->
   <div class="grid grid-cols-4 gap-4 mb-4">
-    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Total Flows</div><div class="text-3xl font-bold text-white count-up" data-target="3000" id="s-totalFlows">0</div></div>
-    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Anomalies Detected</div><div class="text-3xl font-bold text-cb-red count-up" data-target="1984" id="s-anomalies">0</div></div>
-    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Critical Threats</div><div class="text-3xl font-bold text-cb-red count-up" data-target="1395" id="s-critical">0</div></div>
+    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Total Flows</div><div class="text-3xl font-bold text-white" id="s-totalFlows">0</div></div>
+    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Anomalies Detected</div><div class="text-3xl font-bold text-cb-red" id="s-anomalies">0</div></div>
+    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Suspicious Flows</div><div class="text-3xl font-bold text-cb-red" id="s-critical">0</div></div>
     <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Anomaly Rate</div><div class="text-3xl font-bold text-cb-yellow" id="s-anomalyRate">0%</div></div>
   </div>
   <!-- Row 2 stat cards -->
   <div class="grid grid-cols-4 gap-4 mb-6">
-    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Allowed Traffic</div><div class="text-3xl font-bold text-cb-green count-up" data-target="6075" id="s-allowed">0</div></div>
-    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Restricted Traffic</div><div class="text-3xl font-bold text-cb-yellow count-up" data-target="3554" id="s-restricted">0</div></div>
-    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Suspicious Traffic</div><div class="text-3xl font-bold text-cb-red count-up" data-target="2371" id="s-suspicious">0</div></div>
+    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Allowed Traffic</div><div class="text-3xl font-bold text-cb-green" id="s-allowed">0</div></div>
+    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Restricted Traffic</div><div class="text-3xl font-bold text-cb-yellow" id="s-restricted">0</div></div>
+    <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Suspicious Traffic</div><div class="text-3xl font-bold text-cb-red" id="s-suspicious">0</div></div>
     <div class="stat-card"><div class="text-cb-muted text-xs uppercase tracking-wider mb-2">Live Captures</div><div class="text-3xl font-bold text-cb-cyan" id="s-liveCaptures">0</div></div>
   </div>
+  <!-- System Health -->
+  <div class="stat-card mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <div class="font-semibold text-white">System Health</div>
+      <button onclick="loadSystemStatus()" class="text-xs text-cb-cyan border border-cb-border px-3 py-1 rounded hover:bg-cb-card">↻ Refresh</button>
+    </div>
+    <div class="grid grid-cols-3 gap-3" id="healthGrid">
+      <div class="feature-card text-center"><div class="text-cb-muted text-xs mb-1">API Server</div><div id="hc-api" class="text-cb-muted text-sm font-bold">—</div></div>
+      <div class="feature-card text-center"><div class="text-cb-muted text-xs mb-1">ML Model</div><div id="hc-model" class="text-cb-muted text-sm font-bold">—</div></div>
+      <div class="feature-card text-center"><div class="text-cb-muted text-xs mb-1">Dataset</div><div id="hc-dataset" class="text-cb-muted text-sm font-bold">—</div></div>
+      <div class="feature-card text-center"><div class="text-cb-muted text-xs mb-1">Metrics File</div><div id="hc-metrics" class="text-cb-muted text-sm font-bold">—</div></div>
+      <div class="feature-card text-center"><div class="text-cb-muted text-xs mb-1">Static Assets</div><div id="hc-static" class="text-cb-muted text-sm font-bold">—</div></div>
+      <div class="feature-card text-center"><div class="text-cb-muted text-xs mb-1">Session Flows</div><div id="hc-flows" class="text-cb-muted text-sm font-bold">—</div></div>
+    </div>
+    <div class="mt-3 flex items-center gap-2">
+      <span class="pulse-dot" id="hc-statusDot" style="background:#64748b"></span>
+      <span id="hc-statusText" class="text-xs text-cb-muted">Loading…</span>
+      <span id="hc-accuracy" class="ml-auto text-xs text-cb-muted"></span>
+    </div>
+  </div>
+
   <!-- Charts row -->
   <div class="grid grid-cols-2 gap-4 mb-6">
     <div class="stat-card"><div class="font-semibold text-white mb-4">Attack Type Distribution</div><div style="position:relative;height:200px"><canvas id="attackDoughnut"></canvas></div></div>
@@ -173,64 +197,44 @@ tailwind.config = {
 
 <!-- ═══ SECTION 2: LIVE MONITOR ═══ -->
 <div id="section-live-monitor" class="section">
-  <div class="mb-6">
-    <h1 class="text-2xl font-bold text-white">Live Traffic Monitor</h1>
-    <p class="text-cb-muted text-sm mt-1">Domains inferred from TLS SNI and DNS metadata. No payload content is inspected or stored.</p>
+  <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Live Traffic Monitor</h1>
+      <p class="text-cb-muted text-sm mt-1">Real browser traffic captured via the CyberTraffic AI extension — no proxy or payload inspection.</p>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="runVerification()" id="verifyBtn" class="bg-cb-purple text-white px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Run Verification Tests
+      </button>
+    </div>
   </div>
 
-  <!-- Proxy Setup Panel -->
-  <div id="proxySetupPanel" class="stat-card mb-6">
-    <div class="font-semibold text-white mb-4 flex items-center gap-2">
-      <svg class="w-5 h-5 text-cb-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-      Proxy Setup
+  <!-- Verification Panel (hidden until Run Tests clicked) -->
+  <div id="verifyPanel" class="stat-card mb-4 hidden">
+    <div class="flex items-center justify-between mb-4">
+      <div class="font-semibold text-white">ML Pipeline Verification — All 6 Traffic Categories</div>
+      <span class="text-cb-muted text-xs">Each test sends a crafted feature vector directly to the XGBoost model</span>
     </div>
-    <div class="grid grid-cols-3 gap-6">
-      <div>
-        <div class="text-cb-cyan text-xs font-bold uppercase tracking-wider mb-2">Step 1 — Start Proxy</div>
-        <div class="copyable" onclick="copyText('cd proxy && bash start_proxy.sh',this)">
-          <span>cd proxy && bash start_proxy.sh</span>
-          <svg class="w-4 h-4 text-cb-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-        </div>
-      </div>
-      <div>
-        <div class="text-cb-cyan text-xs font-bold uppercase tracking-wider mb-2">Step 2 — Browser Proxy</div>
-        <div class="copyable mb-2" onclick="copyText('127.0.0.1',this)"><span>Host: 127.0.0.1</span><svg class="w-4 h-4 text-cb-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>
-        <div class="copyable" onclick="copyText('8080',this)"><span>Port: 8080</span><svg class="w-4 h-4 text-cb-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></div>
-      </div>
-      <div>
-        <div class="text-cb-cyan text-xs font-bold uppercase tracking-wider mb-2">Step 3 — Install CA Cert</div>
-        <div class="text-cb-muted text-sm">Visit <span class="text-cb-cyan font-mono">http://mitm.it</span> in your browser and install the certificate. This allows HTTPS traffic inspection.</div>
-      </div>
+    <div id="verifyResults" class="grid grid-cols-3 gap-3">
+      <!-- filled by runVerification() -->
     </div>
-    <button onclick="startMonitoring()" class="mt-4 bg-cb-green text-white px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition">✓ Proxy is running — Start Monitoring</button>
+    <div class="mt-3 flex items-center gap-3">
+      <div id="verifyStatus" class="text-sm text-cb-muted">Click "Run Verification Tests" to begin</div>
+      <div id="verifySummary" class="ml-auto text-sm font-semibold hidden"></div>
+    </div>
   </div>
 
-  <!-- Live Panel -->
-  <div id="livePanelContent" class="hidden">
-    <!-- Controls -->
-    <div class="stat-card mb-4 flex items-center gap-4 flex-wrap">
-      <div class="flex items-center gap-2">
-        <span class="pulse-dot" id="captureDot" style="background:#22c55e"></span>
-        <span class="text-sm text-cb-muted" id="captureStatusText">Capturing from real browser traffic</span>
-      </div>
-      <div class="flex items-center gap-2 text-sm">
-        <label class="text-cb-muted">Mode:</label>
-        <select id="captureMode" onchange="updateCaptureMode()" class="bg-cb-card border border-cb-border rounded px-2 py-1 text-white text-xs">
-          <option value="demo">Demo (Simulate)</option>
-          <option value="live">Live (Proxy)</option>
-        </select>
-      </div>
-      <div class="flex items-center gap-2 text-sm">
-        <label class="text-cb-muted">Speed:</label>
-        <select id="speedSelect" onchange="updateSpeed()" class="bg-cb-card border border-cb-border rounded px-2 py-1 text-white text-xs">
-          <option value="2000">Normal (2s)</option>
-          <option value="800">Fast (0.8s)</option>
-        </select>
-      </div>
-      <span class="text-cb-muted text-sm" id="flowCounter">0 flows captured</span>
-      <button onclick="toggleCapture()" id="captureToggleBtn" class="bg-cb-red text-white px-3 py-1 rounded text-xs font-semibold">⏹ Stop</button>
-      <button onclick="clearMonitor()" class="bg-cb-card border border-cb-border text-cb-muted px-3 py-1 rounded text-xs">🗑 Clear</button>
+  <!-- Controls bar -->
+  <div class="stat-card mb-4 flex items-center gap-4 flex-wrap">
+    <div class="flex items-center gap-2">
+      <span class="pulse-dot" id="captureDot" style="background:#22c55e"></span>
+      <span class="text-sm text-cb-muted" id="captureStatusText">Capturing from browser extension</span>
     </div>
+    <span class="text-cb-muted text-sm" id="flowCounter">0 flows captured</span>
+    <button onclick="toggleCapture()" id="captureToggleBtn" class="bg-cb-red text-white px-3 py-1 rounded text-xs font-semibold">⏹ Stop</button>
+    <button onclick="clearMonitor()" class="bg-cb-card border border-cb-border text-cb-muted px-3 py-1 rounded text-xs">🗑 Clear</button>
+  </div>
 
     <!-- Mini stats bar -->
     <div class="stat-card mb-4 flex gap-6 text-sm flex-wrap">
@@ -265,7 +269,6 @@ tailwind.config = {
         <div class="feature-card"><div class="text-cb-muted text-xs">Failed Connections</div><div class="text-white text-lg font-bold" id="f-failed">—</div></div>
         <div class="feature-card"><div class="text-cb-muted text-xs">Anonymity Score</div><div class="text-white text-lg font-bold" id="f-anon">—</div></div>
       </div>
-    </div>
   </div>
 </div>
 
@@ -419,8 +422,8 @@ let charts = {};
 let captureInterval = null;
 let captureActive = true;
 let captureSpeed = 2000;
-let captureMode = 'demo';
 let trafficRows = [];
+const seenFlowIds = new Set();
 let monitorStats = { Allowed:0, Restricted:0, Suspicious:0, VPN:0, Tor:0, DoH:0 };
 let policySessionCounts = { Allowed:0, Restricted:0, Suspicious:0 };
 let policyConfs = [];
@@ -489,14 +492,47 @@ async function loadDashboard(showSpinner=false) {
   if (showSpinner) hideLoader();
 }
 
+async function resetSession() {
+  if (!confirm('Clear all session flow data from the server? This resets the dashboard to zero.')) return;
+  try {
+    await fetch(API + '/reset-session', { method: 'POST' });
+    clearMonitor();
+    loadDashboard(false);
+    loadSystemStatus();
+    toast('Session data cleared — all counts reset to zero', 'success');
+  } catch(e) { toast('Failed to reset session', 'error'); }
+}
+
+async function loadSystemStatus() {
+  try {
+    const s = await fetch(API + '/system-status').then(r => r.json());
+    const ok = (v) => v ? '<span style="color:#22c55e">✓ OK</span>' : '<span style="color:#ef4444">✗ Missing</span>';
+    document.getElementById('hc-api').innerHTML     = ok(s.checks.api_running);
+    document.getElementById('hc-model').innerHTML   = ok(s.checks.model_loaded);
+    document.getElementById('hc-dataset').innerHTML = ok(s.checks.dataset_loaded);
+    document.getElementById('hc-metrics').innerHTML = ok(s.checks.metrics_loaded);
+    document.getElementById('hc-static').innerHTML  = ok(s.checks.static_files);
+    document.getElementById('hc-flows').textContent = s.session_flows;
+    const healthy = s.status === 'healthy';
+    document.getElementById('hc-statusDot').style.background = healthy ? '#22c55e' : '#f59e0b';
+    document.getElementById('hc-statusText').textContent = healthy ? 'All systems operational' : 'Some components degraded — check above';
+    document.getElementById('hc-statusText').style.color  = healthy ? '#22c55e' : '#f59e0b';
+    if (s.model_accuracy) document.getElementById('hc-accuracy').textContent = `Model accuracy: ${(s.model_accuracy*100).toFixed(2)}%`;
+  } catch(e) {
+    document.getElementById('hc-statusText').textContent = 'Cannot reach API — is web_access.py running?';
+    document.getElementById('hc-statusText').style.color = '#ef4444';
+    document.getElementById('hc-statusDot').style.background = '#ef4444';
+  }
+}
+
 function fillDashStats(s) {
-  countUp(document.getElementById('s-totalFlows'), s.total_flows_analyzed);
-  countUp(document.getElementById('s-anomalies'), s.anomaly_count);
-  countUp(document.getElementById('s-critical'), s.critical_count);
+  document.getElementById('s-totalFlows').textContent  = s.total_flows_analyzed;
+  document.getElementById('s-anomalies').textContent   = s.anomaly_count;
+  document.getElementById('s-critical').textContent    = s.critical_count;
   document.getElementById('s-anomalyRate').textContent = (s.anomaly_rate*100).toFixed(1)+'%';
-  countUp(document.getElementById('s-allowed'), s.policy_distribution.Allowed);
-  countUp(document.getElementById('s-restricted'), s.policy_distribution.Restricted);
-  countUp(document.getElementById('s-suspicious'), s.policy_distribution.Suspicious);
+  document.getElementById('s-allowed').textContent     = s.policy_distribution.Allowed;
+  document.getElementById('s-restricted').textContent  = s.policy_distribution.Restricted;
+  document.getElementById('s-suspicious').textContent  = s.policy_distribution.Suspicious;
   document.getElementById('s-liveCaptures').textContent = s.live_captures;
 }
 
@@ -535,17 +571,11 @@ function renderPolicyBar(dist) {
 }
 
 // ── Live Monitor ───────────────────────────────────────────────────────────
-function startMonitoring() {
-  document.getElementById('proxySetupPanel').classList.add('hidden');
-  document.getElementById('livePanelContent').classList.remove('hidden');
-  startCapture();
-  toast('Monitoring started — demo mode active', 'success');
-}
-
 function startCapture() {
   captureActive = true;
   document.getElementById('captureToggleBtn').textContent = '⏹ Stop';
   document.getElementById('captureDot').style.animation = 'pulse 2s infinite';
+  document.getElementById('captureStatusText').textContent = 'Capturing from browser extension';
   clearInterval(captureInterval);
   captureInterval = setInterval(fetchTraffic, captureSpeed);
 }
@@ -555,6 +585,7 @@ function stopCapture() {
   document.getElementById('captureToggleBtn').textContent = '▶ Resume';
   document.getElementById('captureDot').style.animation = 'none';
   document.getElementById('captureDot').style.background = '#64748b';
+  document.getElementById('captureStatusText').textContent = 'Capture paused';
   clearInterval(captureInterval);
 }
 
@@ -562,17 +593,9 @@ function toggleCapture() {
   if (captureActive) stopCapture(); else startCapture();
 }
 
-function updateSpeed() {
-  captureSpeed = parseInt(document.getElementById('speedSelect').value);
-  if (captureActive) { clearInterval(captureInterval); captureInterval = setInterval(fetchTraffic, captureSpeed); }
-}
-
-function updateCaptureMode() {
-  captureMode = document.getElementById('captureMode').value;
-}
-
 function clearMonitor() {
   trafficRows = [];
+  seenFlowIds.clear();
   document.getElementById('trafficTable').innerHTML = '';
   monitorStats = { Allowed:0, Restricted:0, Suspicious:0, VPN:0, Tor:0, DoH:0 };
   updateMiniStats();
@@ -581,18 +604,83 @@ function clearMonitor() {
 
 async function fetchTraffic() {
   try {
-    let data;
-    if (captureMode === 'live') {
-      const res = await fetch(API+'/recent-predictions?limit=1');
-      const arr = await res.json();
-      if (!arr || arr.length === 0) return;
-      data = arr[0];
-    } else {
-      const res = await fetch(API+'/simulate-traffic');
-      data = await res.json();
-    }
-    if (data && data.domain) addTrafficRow(data);
+    const res = await fetch(API + '/recent-predictions?limit=20');
+    const arr = await res.json();
+    if (!arr || arr.length === 0) return;
+    const newFlows = arr.filter(d => d.flow_id && !seenFlowIds.has(d.flow_id));
+    if (newFlows.length === 0) return;
+    newFlows.forEach(d => seenFlowIds.add(d.flow_id));
+    newFlows.slice().reverse().forEach(d => { if (d.domain) addTrafficRow(d); });
   } catch(e) {}
+}
+
+// ── Verification Test Suite ────────────────────────────────────────────────
+const VERIFY_TESTS = [
+  { name:'Allowed', label:'Normal HTTPS', color:'#22c55e', expected:'Allowed',
+    record:{ source_ip:'127.0.0.1', destination_ip:'google.com', source_port:55234, destination_port:443, protocol:'HTTPS', tls_version:'TLS1.3', ja3_fingerprint:'ja3_5', flow_duration_ms:245.5, packet_count:8, avg_packet_size:512.0, packet_size_std:128.0, inter_arrival_time_ms:45.2, burstiness_score:0.12, bytes_sent:1024, bytes_received:8192, upload_download_ratio:0.125, dns_over_https:0, vpn_usage:0, tor_usage:0, failed_connection_attempts:0, packet_entropy:2.8, session_start_hour:10, weekend_access:0, domain:'google.com' }},
+  { name:'Restricted', label:'VPN + Social Media', color:'#f59e0b', expected:'Restricted',
+    record:{ source_ip:'127.0.0.1', destination_ip:'facebook.com', source_port:52100, destination_port:443, protocol:'VPN', tls_version:'TLS1.2', ja3_fingerprint:'ja3_3', flow_duration_ms:890.2, packet_count:45, avg_packet_size:680.0, packet_size_std:220.0, inter_arrival_time_ms:120.5, burstiness_score:0.35, bytes_sent:8500, bytes_received:18000, upload_download_ratio:0.47, dns_over_https:0, vpn_usage:1, tor_usage:0, failed_connection_attempts:1, packet_entropy:4.2, session_start_hour:14, weekend_access:0, domain:'facebook.com' }},
+  { name:'Suspicious', label:'Tor + High Entropy', color:'#ef4444', expected:'Suspicious',
+    record:{ source_ip:'127.0.0.1', destination_ip:'dread.onion', source_port:58000, destination_port:9050, protocol:'Tor', tls_version:'TLS1.3', ja3_fingerprint:'ja3_8', flow_duration_ms:1250.0, packet_count:180, avg_packet_size:520.0, packet_size_std:310.0, inter_arrival_time_ms:88.3, burstiness_score:0.68, bytes_sent:12000, bytes_received:85000, upload_download_ratio:0.14, dns_over_https:1, vpn_usage:0, tor_usage:1, failed_connection_attempts:4, packet_entropy:7.6, session_start_hour:2, weekend_access:1, domain:'dread.onion' }},
+  { name:'VPN', label:'VPN Traffic', color:'#8b5cf6', expected:'Restricted',
+    record:{ source_ip:'127.0.0.1', destination_ip:'nordvpn.com', source_port:54321, destination_port:1194, protocol:'VPN', tls_version:'TLS1.2', ja3_fingerprint:'ja3_2', flow_duration_ms:5200.0, packet_count:320, avg_packet_size:640.0, packet_size_std:185.0, inter_arrival_time_ms:95.0, burstiness_score:0.28, bytes_sent:45000, bytes_received:120000, upload_download_ratio:0.375, dns_over_https:0, vpn_usage:1, tor_usage:0, failed_connection_attempts:2, packet_entropy:5.4, session_start_hour:20, weekend_access:0, domain:'nordvpn.com' }},
+  { name:'Tor', label:'Tor Circuit', color:'#ef4444', expected:'Suspicious',
+    record:{ source_ip:'127.0.0.1', destination_ip:'tor-relay.onion', source_port:59000, destination_port:9050, protocol:'Tor', tls_version:'TLS1.3', ja3_fingerprint:'ja3_11', flow_duration_ms:3400.0, packet_count:250, avg_packet_size:512.0, packet_size_std:290.0, inter_arrival_time_ms:65.0, burstiness_score:0.72, bytes_sent:20000, bytes_received:105000, upload_download_ratio:0.19, dns_over_https:1, vpn_usage:1, tor_usage:1, failed_connection_attempts:6, packet_entropy:7.8, session_start_hour:3, weekend_access:1, domain:'tor-relay.onion' }},
+  { name:'DoH', label:'DNS over HTTPS', color:'#06b6d4', expected:'Allowed',
+    record:{ source_ip:'127.0.0.1', destination_ip:'cloudflare-dns.com', source_port:51200, destination_port:853, protocol:'DoH', tls_version:'TLS1.3', ja3_fingerprint:'ja3_12', flow_duration_ms:85.0, packet_count:4, avg_packet_size:320.0, packet_size_std:45.0, inter_arrival_time_ms:22.0, burstiness_score:0.08, bytes_sent:512, bytes_received:768, upload_download_ratio:0.667, dns_over_https:1, vpn_usage:0, tor_usage:0, failed_connection_attempts:0, packet_entropy:1.9, session_start_hour:8, weekend_access:0, domain:'cloudflare-dns.com' }}
+];
+
+async function runVerification() {
+  const panel = document.getElementById('verifyPanel');
+  const results = document.getElementById('verifyResults');
+  const status  = document.getElementById('verifyStatus');
+  const summary = document.getElementById('verifySummary');
+  panel.classList.remove('hidden');
+  summary.classList.add('hidden');
+
+  // Render skeleton cards
+  results.innerHTML = VERIFY_TESTS.map((t,i) => `
+    <div id="vcard-${i}" class="stat-card" style="border-left:3px solid ${t.color}">
+      <div class="text-xs text-cb-muted uppercase tracking-wider mb-1">${t.name}</div>
+      <div class="text-white font-semibold text-sm mb-1">${t.label}</div>
+      <div class="flex items-center gap-2 mt-2" id="vresult-${i}">
+        <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>
+        <span class="text-cb-muted text-xs">Testing...</span>
+      </div>
+    </div>`).join('');
+
+  let passed = 0;
+  for (let i = 0; i < VERIFY_TESTS.length; i++) {
+    const t = VERIFY_TESTS[i];
+    status.textContent = `Running test ${i+1}/${VERIFY_TESTS.length}: ${t.name}...`;
+    try {
+      const res  = await fetch(API + '/predict', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(t.record) });
+      const data = await res.json();
+      const actual   = data.policy_label || '?';
+      const conf     = data.confidence   || 0;
+      const ok       = actual === t.expected;
+      if (ok) passed++;
+      const riskColor = data.risk_color || '#94a3b8';
+      document.getElementById(`vresult-${i}`).innerHTML = `
+        <span style="font-size:18px">${ok ? '✅' : '⚠️'}</span>
+        <div>
+          <div class="text-sm font-bold" style="color:${riskColor}">${actual}</div>
+          <div class="text-xs text-cb-muted">Expected: ${t.expected} · Conf: ${(conf*100).toFixed(0)}%</div>
+        </div>`;
+      addTrafficRow(data); // also shows in the traffic table
+    } catch(e) {
+      document.getElementById(`vresult-${i}`).innerHTML = `<span style="color:#ef4444;font-size:11px">API error — is web_access.py running?</span>`;
+    }
+    await new Promise(r => setTimeout(r, 400)); // stagger tests visually
+  }
+
+  const all = VERIFY_TESTS.length;
+  status.textContent = `Verification complete — ${passed}/${all} tests passed`;
+  summary.textContent = passed === all ? `✅ All ${all} categories working` : `⚠ ${all-passed} test(s) need review`;
+  summary.style.color = passed === all ? '#22c55e' : '#f59e0b';
+  summary.classList.remove('hidden');
+  if (passed === all) toast('All 6 traffic categories classified correctly!', 'success');
+  else toast(`${all-passed} test(s) produced unexpected labels — check model`, 'warning');
 }
 
 function addTrafficRow(d) {
@@ -952,9 +1040,11 @@ initChartDefaults();
 
 window.addEventListener('load', () => {
   loadDashboard(true);
+  loadSystemStatus();
   initAnalyticsCharts();
+  startCapture();
   setInterval(pollLiveStats, 2000);
-  setInterval(() => loadDashboard(false), 30000);
+  setInterval(() => { loadDashboard(false); loadSystemStatus(); }, 30000);
   setInterval(refreshLogs, 10000);
   refreshLogs();
 });

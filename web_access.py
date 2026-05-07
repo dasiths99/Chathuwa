@@ -1,8 +1,7 @@
 """
-Web Access Behavior Monitor — FastAPI Backend
-Port: 5002
+Web Access Behavior Monitor — FastAPI Backend  Port: 5002
 Real-time encrypted traffic classification via XGBoost.
-Receives flow features from mitmproxy addon, classifies policy labels.
+Receives flow features from the CyberTraffic AI browser extension.
 """
 
 from fastapi import FastAPI
@@ -235,91 +234,6 @@ def run_prediction(record: dict) -> dict:
         }
 
 
-def generate_simulated_traffic() -> dict:
-    allowed_d    = ["google.com","github.com","stackoverflow.com","office365.com",
-                    "slack.com","zoom.us","linkedin.com","youtube.com"]
-    restricted_d = ["facebook.com","twitter.com","instagram.com","tiktok.com",
-                    "reddit.com","twitch.tv","discord.com"]
-    suspicious_d = ["tor-relay.onion","anon-browse.net","proxy-hide.io",
-                    "unknown-vpn.net","darkweb-mirror.com"]
-    ja3_choices  = [f"ja3_{i:05d}" for i in range(20)]
-
-    roll = random.random()
-    if roll < 0.5:
-        cat = "allowed"; domain = random.choice(allowed_d)
-    elif roll < 0.8:
-        cat = "restricted"; domain = random.choice(restricted_d)
-    else:
-        cat = "suspicious"; domain = random.choice(suspicious_d)
-
-    now_h = int(strftime("%H"))
-    weekend = 1 if int(strftime("%w")) in [0, 6] else 0
-
-    if cat == "suspicious":
-        rec = {
-            "domain": domain, "source_ip": f"192.168.{random.randint(1,10)}.{random.randint(2,254)}",
-            "destination_ip": domain, "source_port": random.randint(49152, 65535),
-            "destination_port": random.choice([443, 9001, 9030]),
-            "protocol": "Tor", "tls_version": "TLS1.2",
-            "ja3_fingerprint": random.choice(ja3_choices),
-            "flow_duration_ms": round(random.uniform(500, 5000), 2),
-            "packet_count": random.randint(20, 200),
-            "avg_packet_size": round(random.uniform(800, 1400), 2),
-            "packet_size_std": round(random.uniform(200, 600), 2),
-            "inter_arrival_time_ms": round(random.uniform(10, 80), 2),
-            "burstiness_score": round(random.uniform(0.6, 0.95), 4),
-            "bytes_sent": random.randint(10000, 500000),
-            "bytes_received": random.randint(5000, 200000),
-            "upload_download_ratio": round(random.uniform(0.5, 3.0), 4),
-            "dns_over_https": 0, "vpn_usage": 1, "tor_usage": 1,
-            "failed_connection_attempts": random.randint(2, 8),
-            "packet_entropy": round(random.uniform(5.5, 8.0), 4),
-            "session_start_hour": now_h, "weekend_access": weekend,
-        }
-    elif cat == "restricted":
-        protocol = random.choice(["HTTPS", "VPN"])
-        rec = {
-            "domain": domain, "source_ip": f"192.168.{random.randint(1,10)}.{random.randint(2,254)}",
-            "destination_ip": domain, "source_port": random.randint(49152, 65535),
-            "destination_port": 443, "protocol": protocol, "tls_version": "TLS1.2",
-            "ja3_fingerprint": random.choice(ja3_choices),
-            "flow_duration_ms": round(random.uniform(200, 3000), 2),
-            "packet_count": random.randint(10, 100),
-            "avg_packet_size": round(random.uniform(400, 900), 2),
-            "packet_size_std": round(random.uniform(100, 400), 2),
-            "inter_arrival_time_ms": round(random.uniform(20, 150), 2),
-            "burstiness_score": round(random.uniform(0.2, 0.6), 4),
-            "bytes_sent": random.randint(2000, 100000),
-            "bytes_received": random.randint(5000, 300000),
-            "upload_download_ratio": round(random.uniform(0.1, 1.0), 4),
-            "dns_over_https": random.randint(0, 1), "vpn_usage": random.randint(0, 1),
-            "tor_usage": 0, "failed_connection_attempts": random.randint(0, 2),
-            "packet_entropy": round(random.uniform(3.0, 5.5), 4),
-            "session_start_hour": now_h, "weekend_access": weekend,
-        }
-    else:
-        protocol = random.choice(["HTTPS", "QUIC", "DoH"])
-        rec = {
-            "domain": domain, "source_ip": f"192.168.{random.randint(1,10)}.{random.randint(2,254)}",
-            "destination_ip": domain, "source_port": random.randint(49152, 65535),
-            "destination_port": 443, "protocol": protocol, "tls_version": "TLS1.3",
-            "ja3_fingerprint": random.choice(ja3_choices),
-            "flow_duration_ms": round(random.uniform(50, 1000), 2),
-            "packet_count": random.randint(3, 50),
-            "avg_packet_size": round(random.uniform(200, 600), 2),
-            "packet_size_std": round(random.uniform(50, 200), 2),
-            "inter_arrival_time_ms": round(random.uniform(30, 200), 2),
-            "burstiness_score": round(random.uniform(0.05, 0.25), 4),
-            "bytes_sent": random.randint(500, 20000),
-            "bytes_received": random.randint(1000, 50000),
-            "upload_download_ratio": round(random.uniform(0.05, 0.5), 4),
-            "dns_over_https": 1 if protocol == "DoH" else 0,
-            "vpn_usage": 0, "tor_usage": 0, "failed_connection_attempts": 0,
-            "packet_entropy": round(random.uniform(1.5, 3.5), 4),
-            "session_start_hour": now_h, "weekend_access": weekend,
-        }
-    return rec
-
 
 def _build_response(record: dict, result: dict) -> dict:
     flow_id = f"WA-{random.randint(100000,999999)}"
@@ -374,7 +288,6 @@ def health():
             "port": 5002,
             "component": "web-access-behavior-monitor",
             "model_loaded": model_loaded,
-            "proxy_instructions": "Set browser proxy to 127.0.0.1:8080",
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -398,48 +311,82 @@ def recent_predictions(limit: int = 20):
         return {"error": str(e), "status": 500}
 
 
-@app.get("/simulate-traffic")
-def simulate_traffic():
+@app.get("/dashboard-stats")
+def dashboard_stats():
     try:
-        record = generate_simulated_traffic()
-        result = run_prediction(record)
-        return _build_response(record, result)
+        # Only live session data — no historical baseline
+        live = list(prediction_history)
+        allowed    = sum(1 for e in live if e.get("policy_label") == "Allowed")
+        restricted = sum(1 for e in live if e.get("policy_label") == "Restricted")
+        suspicious = sum(1 for e in live if e.get("policy_label") == "Suspicious")
+        total      = len(live)
+        anomaly    = restricted + suspicious
+        normal     = allowed
+
+        return {
+            "total_flows_analyzed":  total,
+            "anomaly_count":         anomaly,
+            "normal_count":          normal,
+            "anomaly_rate":          round(anomaly / max(total, 1), 3),
+            "attack_distribution": {
+                "Normal":     normal,
+                "Suspicious": suspicious,
+                "Restricted": restricted,
+            },
+            "severity_breakdown": {
+                "Critical": suspicious,
+                "High":     restricted,
+                "Normal":   normal
+            },
+            "policy_distribution": {
+                "Allowed":    allowed,
+                "Restricted": restricted,
+                "Suspicious": suspicious
+            },
+            "top_threat":      "Suspicious" if suspicious > 0 else ("Restricted" if restricted > 0 else "None"),
+            "critical_count":  suspicious,
+            "model_accuracy":  metrics_data.get("xgboost", {}).get("accuracy", 0.9241),
+            "model_f1":        metrics_data.get("xgboost", {}).get("f1", 0.9187),
+            "model_auc":       metrics_data.get("xgboost", {}).get("auc", 0.9713),
+            "live_captures":   total
+        }
     except Exception as e:
         return {"error": str(e), "status": 500}
 
 
-@app.get("/dashboard-stats")
-def dashboard_stats():
+@app.post("/reset-session")
+def reset_session():
+    prediction_history.clear()
+    return {"ok": True, "message": "Session data cleared"}
+
+
+@app.get("/system-status")
+def system_status():
     try:
+        import time
+        live = list(prediction_history)
+        live_counts = {"Allowed": 0, "Restricted": 0, "Suspicious": 0}
+        for e in live:
+            lbl = e.get("policy_label", "")
+            if lbl in live_counts:
+                live_counts[lbl] += 1
+
+        checks = {
+            "api_running":        True,
+            "model_loaded":       model_loaded,
+            "dataset_loaded":     df2 is not None,
+            "metrics_loaded":     bool(metrics_data),
+            "static_files":       os.path.exists(os.path.join(BASE, "static", "chart.min.js")),
+            "logs_dir":           os.path.exists(os.path.join(BASE, "logs")),
+        }
+        all_ok = all(checks.values())
         return {
-            "total_flows_analyzed":  3000,
-            "anomaly_count":         1984,
-            "normal_count":          1016,
-            "anomaly_rate":          round(1984/3000, 3),
-            "attack_distribution": {
-                "Normal":            1016,
-                "DDoS":              619,
-                "Ransomware":        456,
-                "Botnet":            320,
-                "Data_Exfiltration": 299,
-                "Port_Scanning":     290
-            },
-            "severity_breakdown": {
-                "Critical": 619+456+320,
-                "High":     299+290,
-                "Normal":   1016
-            },
-            "policy_distribution": {
-                "Allowed":    6075,
-                "Restricted": 3554,
-                "Suspicious": 2371
-            },
-            "top_threat":      "DDoS",
-            "critical_count":  1395,
-            "model_accuracy":  metrics_data.get("xgboost", {}).get("accuracy", 0.9241),
-            "model_f1":        metrics_data.get("xgboost", {}).get("f1", 0.9187),
-            "model_auc":       metrics_data.get("xgboost", {}).get("auc", 0.9713),
-            "live_captures":   len(prediction_history)
+            "status":           "healthy" if all_ok else "degraded",
+            "checks":           checks,
+            "model_accuracy":   metrics_data.get("xgboost", {}).get("accuracy"),
+            "session_flows":    len(live),
+            "session_counts":   live_counts,
+            "timestamp":        datetime.now().isoformat(),
         }
     except Exception as e:
         return {"error": str(e), "status": 500}

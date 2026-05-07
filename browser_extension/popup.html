@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CyberTraffic AI</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 380px; background: #0f172a; color: #f1f5f9; font-family: 'Segoe UI', sans-serif; font-size: 13px; }
+
+  .header { background: #1e293b; border-bottom: 1px solid #334155; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; }
+  .logo { display: flex; align-items: center; gap: 8px; }
+  .logo-icon { width: 20px; height: 20px; background: linear-gradient(135deg,#06b6d4,#8b5cf6); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; }
+  .logo-text { font-weight: 700; font-size: 14px; color: #06b6d4; }
+  .logo-sub { font-size: 10px; color: #64748b; }
+
+  .toggle-row { display: flex; align-items: center; gap: 8px; }
+  .toggle { position: relative; width: 36px; height: 20px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: #334155; border-radius: 20px; cursor: pointer; transition: .2s; }
+  .slider:before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  input:checked + .slider { background: #22c55e; }
+  input:checked + .slider:before { transform: translateX(16px); }
+  .toggle-label { font-size: 11px; color: #94a3b8; }
+
+  .status-bar { background: #0f172a; padding: 8px 14px; border-bottom: 1px solid #1e293b; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .dot-green { background: #22c55e; animation: pulse 2s infinite; }
+  .dot-gray  { background: #475569; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+  .status-text { font-size: 11px; color: #64748b; }
+  .api-status { margin-left: auto; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+  .api-ok  { background: #166534; color: #22c55e; }
+  .api-err { background: #7f1d1d; color: #ef4444; }
+
+  .last-capture { padding: 10px 14px; background: #1e293b; border-bottom: 1px solid #334155; display: none; }
+  .last-capture.visible { display: block; }
+  .lc-header { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .lc-domain { font-size: 13px; font-weight: 600; color: #06b6d4; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lc-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .badge { padding: 2px 7px; border-radius: 9999px; font-size: 10px; font-weight: 700; }
+  .badge-Allowed    { background: #166534; color: #22c55e; }
+  .badge-Restricted { background: #78350f; color: #f59e0b; }
+  .badge-Suspicious { background: #7f1d1d; color: #ef4444; }
+  .conf { font-size: 11px; color: #94a3b8; }
+  .alert-row { margin-top: 5px; padding: 5px 8px; background: #7f1d1d33; border: 1px solid #ef444455; border-radius: 6px; font-size: 11px; color: #ef4444; display: none; }
+  .alert-row.visible { display: block; }
+
+  .list-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px 4px; }
+  .list-title { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .5px; }
+  .clear-btn { font-size: 10px; color: #475569; cursor: pointer; border: 1px solid #334155; background: none; padding: 2px 7px; border-radius: 4px; }
+  .clear-btn:hover { color: #94a3b8; border-color: #64748b; }
+
+  .flow-list { max-height: 220px; overflow-y: auto; padding: 0 14px 8px; }
+  .flow-list::-webkit-scrollbar { width: 4px; }
+  .flow-list::-webkit-scrollbar-track { background: #0f172a; }
+  .flow-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+  .flow-item { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid #1e293b; }
+  .flow-item:last-child { border-bottom: none; }
+  .flow-domain { flex: 1; font-size: 11px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .flow-conf { font-size: 10px; color: #475569; min-width: 28px; text-align: right; }
+  .flow-time { font-size: 9px; color: #334155; min-width: 46px; text-align: right; }
+  .risk-dot { width: 6px; height: 6px; border-radius: 50%; min-width: 6px; }
+
+  .empty-state { text-align: center; padding: 24px 0; color: #334155; }
+  .empty-icon { font-size: 28px; margin-bottom: 6px; }
+  .empty-text { font-size: 12px; }
+
+  .footer { background: #1e293b; border-top: 1px solid #334155; padding: 8px 14px; display: flex; justify-content: space-between; align-items: center; }
+  .footer-count { font-size: 10px; color: #475569; }
+  .open-dash { font-size: 10px; color: #06b6d4; cursor: pointer; text-decoration: none; border: 1px solid #0e7490; padding: 3px 8px; border-radius: 4px; }
+  .open-dash:hover { background: #0e749022; }
+
+  .stats-row { display: flex; gap: 0; border-bottom: 1px solid #1e293b; }
+  .stat-box { flex: 1; padding: 8px 0; text-align: center; border-right: 1px solid #1e293b; }
+  .stat-box:last-child { border-right: none; }
+  .stat-val { font-size: 16px; font-weight: 700; }
+  .stat-label { font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: .4px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">🛡</div>
+    <div>
+      <div class="logo-text">CyberTraffic AI</div>
+      <div class="logo-sub">Web Behavior Monitor</div>
+    </div>
+  </div>
+  <div class="toggle-row">
+    <span class="toggle-label" id="toggleLabel">ON</span>
+    <label class="toggle">
+      <input type="checkbox" id="monitorToggle" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+</div>
+
+<!-- API status bar -->
+<div class="status-bar">
+  <div class="dot dot-green" id="statusDot"></div>
+  <span class="status-text" id="statusText">Monitoring active — capturing traffic</span>
+  <span class="api-status api-ok" id="apiStatus">API OK</span>
+</div>
+
+<!-- Stats row -->
+<div class="stats-row">
+  <div class="stat-box"><div class="stat-val text-green" style="color:#22c55e" id="cnt-allowed">0</div><div class="stat-label">Allowed</div></div>
+  <div class="stat-box"><div class="stat-val" style="color:#f59e0b" id="cnt-restricted">0</div><div class="stat-label">Restricted</div></div>
+  <div class="stat-box"><div class="stat-val" style="color:#ef4444" id="cnt-suspicious">0</div><div class="stat-label">Suspicious</div></div>
+  <div class="stat-box"><div class="stat-val" style="color:#06b6d4" id="cnt-total">0</div><div class="stat-label">Total</div></div>
+</div>
+
+<!-- Last captured flow -->
+<div class="last-capture" id="lastCapture">
+  <div class="lc-header">Last classified flow</div>
+  <div class="lc-domain" id="lcDomain">—</div>
+  <div class="lc-row">
+    <span class="badge" id="lcBadge">—</span>
+    <span class="conf" id="lcConf">—</span>
+    <span class="conf" id="lcTime" style="margin-left:auto">—</span>
+  </div>
+  <div class="alert-row" id="lcAlert"></div>
+</div>
+
+<!-- Flow list -->
+<div class="list-header">
+  <span class="list-title">Recent Flows</span>
+  <button class="clear-btn" id="clearBtn">Clear</button>
+</div>
+<div class="flow-list" id="flowList">
+  <div class="empty-state">
+    <div class="empty-icon">📡</div>
+    <div class="empty-text">Browse any website to start capturing</div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <span class="footer-count" id="footerCount">0 flows captured this session</span>
+  <a class="open-dash" id="openDash" href="#">Open Dashboard →</a>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
