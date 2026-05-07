@@ -995,6 +995,8 @@ class NetworkMonitor:
                 _ct  = conn_times
                 def handle(self):
                     self._ct[self._rp].append(time.time())
+                    total = len(self._ct[self._rp])
+                    print(f"  [Honeypot:{self._svc}] hit #{total} from {self.client_address[0]}")
                     try:
                         self.request.sendall(b'Honeypot\r\n')
                     except OSError:
@@ -1018,20 +1020,20 @@ class NetworkMonitor:
     def _honeypot_detector(self, conn_times):
         """
         Runs forever. Every second checks conn_times for:
-          - Brute Force : 15+ connections to an auth port in 60 s (slow rate)
-          - DDoS        : 15+ connections to an auth port in 5 s  (fast flood)
-          - Port Scan   : 5+ different scan-trap ports hit in 30 s
+          - Brute Force : 10+ connections to an auth port in 60 s (slow rate)
+          - DDoS        : 20+ connections to an auth port in 5 s  (fast flood)
+          - Port Scan   : 5+ scan-trap port hits in 30 s
         Emits socketio events and updates stats for the dashboard.
         """
         from collections import deque
         import random
 
-        BRUTE_WINDOW = 60.0   # seconds
-        DDOS_WINDOW  =  5.0   # seconds — fast flood
-        SCAN_WINDOW  = 30.0   # seconds
-        BRUTE_THRESH = 15
-        DDOS_THRESH  = 30     # connections in 5 s = 6 conn/s → flood
-        SCAN_THRESH  =  5     # unique trap ports hit
+        BRUTE_WINDOW = 60.0
+        DDOS_WINDOW  =  5.0
+        SCAN_WINDOW  = 30.0
+        BRUTE_THRESH = 10   # lower = easier to trigger in testing
+        DDOS_THRESH  = 20   # connections in 5 s → flood
+        SCAN_THRESH  =  5   # unique trap port hits
 
         SCAN_TRAP_PORTS = {v[0] for v in self.HONEYPOT_MAP.values()
                            if v[1] == 'SCAN_TRAP'}
@@ -1039,79 +1041,97 @@ class NetworkMonitor:
                            23: 'Brute Force', 3389: 'Brute Force',
                            5900: 'Brute Force'}
 
-        scan_hit_times: deque = deque()   # timestamps of scan-trap hits
-
+        scan_hit_times: deque = deque()
         PORT_PROTO = {22: 'SSH', 21: 'FTP', 23: 'Telnet', 3389: 'RDP', 5900: 'VNC'}
 
+        print("  [HoneypotDetector] running — watching for attacks...")
         while True:
-            time.sleep(1.0)
-            now = time.time()
+            try:
+                time.sleep(1.0)
+                now = time.time()
 
-            # ── Port Scan detection ───────────────────────────────────────
-            # Count how many UNIQUE scan-trap ports were hit in SCAN_WINDOW
-            for rp in SCAN_TRAP_PORTS:
-                dq = conn_times.get(rp)
-                if dq:
-                    scan_hit_times.extend(dq)
+                # ── Port Scan detection ───────────────────────────────────
+                for rp in SCAN_TRAP_PORTS:
+                    dq = conn_times.get(rp)
+                    if dq:
+                        scan_hit_times.extend(dq)
+                        dq.clear()
+
+                while scan_hit_times and scan_hit_times[0] < now - SCAN_WINDOW:
+                    scan_hit_times.popleft()
+
+                if len(scan_hit_times) >= SCAN_THRESH:
+                    print(f"  [HoneypotDetector] PortScan detected ({len(scan_hit_times)} trap hits)")
+                    self._emit_attack('PortScan', 0.85,
+                                      '127.0.0.1:scan', '127.0.0.1:multi', 'TCP')
+                    scan_hit_times.clear()
+
+                # ── Brute Force / DDoS detection ──────────────────────────
+                for real_port, label in AUTH_PORT_LABEL.items():
+                    dq = conn_times.get(real_port)
+                    if not dq:
+                        continue
+
+                    while dq and dq[0] < now - BRUTE_WINDOW:
+                        dq.popleft()
+                    total = len(dq)
+                    if total < BRUTE_THRESH:
+                        continue
+
+                    recent = sum(1 for t in dq if t >= now - DDOS_WINDOW)
+                    if recent >= DDOS_THRESH:
+                        attack_label = 'DDoS'
+                        conf = min(0.70 + recent * 0.005, 0.99)
+                    else:
+                        attack_label = label
+                        conf = min(0.60 + total * 0.01, 0.99)
+
+                    proto = PORT_PROTO.get(real_port, 'TCP')
+                    src   = f"attacker:{random.randint(40000, 65000)}"
+                    dst   = f"127.0.0.1:{real_port}"
+                    print(f"  [HoneypotDetector] {attack_label} port:{real_port} "
+                          f"total:{total} recent5s:{recent} conf:{conf:.0%}")
+                    self._emit_attack(attack_label, conf, src, dst, proto)
                     dq.clear()
 
-            while scan_hit_times and scan_hit_times[0] < now - SCAN_WINDOW:
-                scan_hit_times.popleft()
-
-            if len(scan_hit_times) >= SCAN_THRESH:
-                self._emit_attack('PortScan', 0.85,
-                                  '127.0.0.1:???', '127.0.0.1:multi', 'TCP')
-                scan_hit_times.clear()
-
-            # ── Brute Force / DDoS detection ──────────────────────────────
-            for real_port, label in AUTH_PORT_LABEL.items():
-                dq = conn_times.get(real_port)
-                if not dq:
-                    continue
-
-                # Prune outside brute-force window
-                while dq and dq[0] < now - BRUTE_WINDOW:
-                    dq.popleft()
-                total = len(dq)
-                if total < BRUTE_THRESH:
-                    continue
-
-                # Count connections in short DDoS window
-                recent = sum(1 for t in dq if t >= now - DDOS_WINDOW)
-                if recent >= DDOS_THRESH:
-                    attack_label = 'DDoS'
-                    conf = min(0.70 + recent * 0.005, 0.99)
-                else:
-                    attack_label = label
-                    conf = min(0.60 + total * 0.01, 0.99)
-
-                proto = PORT_PROTO.get(real_port, 'TCP')
-                src   = f"attacker:{random.randint(40000, 65000)}"
-                dst   = f"127.0.0.1:{real_port}"
-                print(f"  🚨 {attack_label} DETECTED port:{real_port} "
-                      f"total:{total} recent5s:{recent} → {conf:.1%}")
-                self._emit_attack(attack_label, conf, src, dst, proto)
-                dq.clear()
+            except Exception as _det_err:
+                print(f"  [HoneypotDetector] ERROR: {_det_err}")
+                import traceback; traceback.print_exc()
 
     def _emit_attack(self, label, conf, src, dst, proto):
         """Emit one attack prediction to the dashboard and update stats."""
         is_threat = True
+        ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
         ml_pred = {
             'attack_type': label, 'confidence': conf,
             'is_threat':   is_threat,
-            'timestamp':   datetime.now().strftime('%H:%M:%S.%f')[:-3],
+            'timestamp':   ts,
             'src': src, 'dst': dst, 'protocol': proto,
         }
-        ml_anomaly_detector.record_simulated(label, conf, is_threat)
-        socketio.emit('ml_prediction', ml_pred)
-        with stats_lock:
-            stats['connections'].insert(0, {
-                'src': src, 'dst': dst, 'protocol': proto,
-                'size': 80, 'time': ml_pred['timestamp'],
-                'attack_type': label, 'is_threat': is_threat,
-                'confidence': conf,
-            })
-            stats['connections'] = stats['connections'][:200]
+        try:
+            ml_anomaly_detector.record_simulated(label, conf, is_threat)
+        except Exception as e:
+            print(f"  [_emit_attack] record_simulated error: {e}")
+
+        # Always update stats dict so HTTP-polling frontend can see it too
+        try:
+            with stats_lock:
+                stats['connections'].insert(0, {
+                    'src': src, 'dst': dst, 'protocol': proto,
+                    'size': 80, 'time': ts,
+                    'attack_type': label, 'is_threat': is_threat,
+                    'confidence': conf,
+                })
+                stats['connections'] = stats['connections'][:200]
+        except Exception as e:
+            print(f"  [_emit_attack] stats update error: {e}")
+
+        # Emit via WebSocket (best-effort — may fail if no clients connected)
+        try:
+            socketio.emit('ml_prediction', ml_pred)
+            print(f"  [_emit_attack] emitted {label} ({conf:.0%}) via WebSocket")
+        except Exception as e:
+            print(f"  [_emit_attack] socketio.emit error: {e}")
 
     # ── Passive monitor (no admin needed — uses psutil) ───────────────────────
     def passive_monitor(self):
@@ -1167,67 +1187,10 @@ class NetworkMonitor:
                 self.byte_count    += int(bytes_delta)
                 self.packet_count  += int(packets_delta)
 
-                # Get ALL connections (not just ESTABLISHED) to catch brute-force
-                try:
-                    conns = psutil.net_connections(kind='inet')
-                except (psutil.AccessDenied, PermissionError):
-                    conns = []
-
-                # ── Normal ESTABLISHED connection classification ───────────────
-                # (Attack detection handled by _honeypot_detector thread)
-                seen = set()
-                for c in conns[:30]:
-                    if c.status not in ('ESTABLISHED', 'CLOSE_WAIT'):
-                        continue
-                    laddr = c.laddr
-                    raddr = c.raddr
-                    if not raddr:
-                        continue
-
-                    key = (laddr.port, raddr.ip, raddr.port)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-
-                    dst_port = raddr.port
-                    proto    = PORT_PROTO.get(dst_port,
-                               PORT_PROTO.get(laddr.port, 'TCP'))
-                    pkt_sz   = random.randint(200, 1400)
-
-                    # Build flow features and run through ML model
-                    feat = self._make_flow_features(dst_port, pkt_sz)
-                    feat['Dst Port']      = float(dst_port)
-                    feat['Flow Pkts/s']   = packet_rate / max(len(conns), 1)
-                    feat['Flow Byts/s']   = byte_rate   / max(len(conns), 1)
-                    label, conf, is_threat = network_ml_model.predict_flow(feat)
-
-                    ml_pred = {
-                        'attack_type': label,
-                        'confidence':  conf,
-                        'is_threat':   is_threat,
-                        'timestamp':   datetime.now().strftime('%H:%M:%S.%f')[:-3],
-                        'src':         f"{laddr.ip}:{laddr.port}",
-                        'dst':         f"{raddr.ip}:{raddr.port}",
-                        'protocol':    proto,
-                    }
-
-                    ml_anomaly_detector.record_simulated(label, conf, is_threat)
-                    socketio.emit('ml_prediction', ml_pred)
-
-                    with stats_lock:
-                        stats['protocols'][proto] = stats['protocols'].get(proto, 0) + 1
-                        conn_entry = {
-                            'src':         ml_pred['src'],
-                            'dst':         ml_pred['dst'],
-                            'protocol':    proto,
-                            'size':        pkt_sz,
-                            'time':        ml_pred['timestamp'],
-                            'attack_type': label,
-                            'is_threat':   is_threat,
-                            'confidence':  conf,
-                        }
-                        stats['connections'].insert(0, conn_entry)
-                        stats['connections'] = stats['connections'][:200]
+                # Attack detection is fully handled by _honeypot_detector thread.
+                # We only need bandwidth/packet counters here — no per-connection
+                # ML classification so that stats['connections'] stays clean and
+                # shows only real attack entries from _emit_attack.
 
             except Exception as e:
                 print(f"  Passive monitor error: {e}")
@@ -1235,6 +1198,9 @@ class NetworkMonitor:
 
     # ── Real packet handler ───────────────────────────────────────────────────
     def packet_handler(self, packet):
+        if not REAL_CAPTURE_AVAILABLE:
+            # Should never happen — guard against accidental calls without admin
+            return
         try:
             import builtins
             IP    = getattr(builtins, '_scapy_IP',   None)
@@ -1347,21 +1313,22 @@ class NetworkMonitor:
                 stats['protocols'][protocol] = stats['protocols'].get(protocol, 0) + 1
                 stats['bandwidth']['total']    += packet_size
                 stats['bandwidth']['download'] += packet_size
-
-                conn_entry = {
-                    'src':      src_str,
-                    'dst':      dst_str,
-                    'protocol': protocol,
-                    'size':     packet_size,
-                    'time':     datetime.now().strftime('%H:%M:%S.%f')[:-3],
-                }
-                if ml_pred:
-                    conn_entry['attack_type'] = ml_pred['attack_type']
-                    conn_entry['is_threat']   = ml_pred['is_threat']
-                    conn_entry['confidence']  = ml_pred['confidence']
-
-                stats['connections'].insert(0, conn_entry)
-                stats['connections'] = stats['connections'][:200]
+                # Keep the Connections table clean:
+                # - background traffic should NOT flood the UI
+                # - only explicit detections (honeypots / threat predictions) should appear
+                if ml_pred and ml_pred.get('is_threat'):
+                    conn_entry = {
+                        'src':         src_str,
+                        'dst':         dst_str,
+                        'protocol':    protocol,
+                        'size':        packet_size,
+                        'time':        datetime.now().strftime('%H:%M:%S.%f')[:-3],
+                        'attack_type': ml_pred.get('attack_type'),
+                        'is_threat':   True,
+                        'confidence':  ml_pred.get('confidence', 0.0),
+                    }
+                    stats['connections'].insert(0, conn_entry)
+                    stats['connections'] = stats['connections'][:200]
 
             try:
                 packet_queue.put_nowait({

@@ -39,6 +39,10 @@ if not exist "app.py" (
 echo Project directory: %CD%
 echo.
 
+:: Hard reset: kill old python processes (prevents zombie :5001 listeners)
+echo Stopping old Python services (if any)...
+taskkill /F /IM python.exe /T >nul 2>&1
+
 :: netifaces is optional and needs MSVC to build — not used by network.py
 echo Installing / updating Python packages ^(skipping netifaces^)...
 python -m pip install -q Flask Flask-SocketIO Flask-CORS python-socketio scapy psutil eventlet python-dotenv numpy pynput tensorflow joblib scikit-learn

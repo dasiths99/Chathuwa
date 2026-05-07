@@ -50,6 +50,30 @@ def check_port_in_use(port: int) -> bool:
         return False
 
 
+def kill_component_processes(script_name: str):
+    """
+    Kill *existing* python processes that are running the given script.
+    This prevents duplicate listeners like two different network.py on :5001.
+    """
+    try:
+        target = script_name.lower()
+        for p in psutil.process_iter(attrs=['pid', 'name', 'cmdline']):
+            try:
+                name = (p.info.get('name') or '').lower()
+                if 'python' not in name:
+                    continue
+                cmd = ' '.join(p.info.get('cmdline') or []).lower()
+                if target in cmd:
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
 def _make_reader(label: str, stream):
     def _read():
         try:
@@ -89,6 +113,18 @@ def run_component(script_name: str, port: int):
     """Launch a component script and stream stdout/stderr."""
     key = get_component_key(script_name)
     try:
+        # If something is already bound to this port, do NOT start another copy.
+        # This is the primary fix for "attacks not showing" caused by duplicate
+        # network.py instances serving different dashboards.
+        if check_port_in_use(port):
+            print(f"[app] {script_name} already listening on :{port} — skip start", flush=True)
+            if key:
+                components_status[key]['running'] = True
+            return
+
+        # If a stale python process is still running this script, kill it first.
+        kill_component_processes(script_name)
+
         script_path = os.path.join(BASE_DIR, script_name)
         if not os.path.exists(script_path):
             print(f"[app] ERROR: {script_name} not found at {script_path}", flush=True)
