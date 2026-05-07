@@ -30,11 +30,13 @@ echo Stopping ALL python.exe processes (tree)...
 taskkill /F /IM python.exe /T >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-echo Starting app.py...
+echo Starting app.py ^(auto-launches all components^)...
 echo Main dashboard : http://localhost:5000
 echo Network monitor: http://localhost:5001
+echo Web Access     : http://localhost:5002
+echo File ^& Mouse  : http://localhost:5003
 echo.
-python app.py
+py app.py
 
 echo.
 echo app.py exited with code %errorlevel%
