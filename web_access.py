@@ -75,6 +75,13 @@ try:
 except Exception:
     pass
 
+try:
+    static_dir = os.path.join(BASE, "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+except Exception:
+    pass
+
 prediction_history: deque = deque(maxlen=200)
 
 POLICY_MAP = {
