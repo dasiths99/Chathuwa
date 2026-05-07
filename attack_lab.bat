@@ -25,6 +25,7 @@ if not defined PY (
 :MAIN_MENU
 :MAIN_MENU
 :MAIN_MENU
+:MAIN_MENU
 cls
 echo ============================================================
 echo   NETWORK ATTACK LAB  -  Select and Run
@@ -101,8 +102,9 @@ print()
 print('All OK - ready to test.' if fail == 0 else f'WARNING: {fail} port(s) not reachable. Is app.py running?')
 "
 echo.
-echo Returning to menu in 2 seconds...
-timeout /t 2 /nobreak >nul
+echo.
+echo Press any key to return to the menu...
+pause >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
@@ -126,8 +128,9 @@ print('Done. Check dashboard for SSH-Patator.')
 "
 %PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-echo Returning to menu in 2 seconds...
-timeout /t 2 /nobreak >nul
+echo.
+echo Press any key to return to the menu...
+pause >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
@@ -151,8 +154,9 @@ print('Done. Check dashboard for FTP-Patator.')
 "
 %PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-echo Returning to menu in 2 seconds...
-timeout /t 2 /nobreak >nul
+echo.
+echo Press any key to return to the menu...
+pause >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
@@ -176,8 +180,9 @@ print('Done. Check dashboard for Brute Force.')
 "
 %PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-echo Returning to menu in 2 seconds...
-timeout /t 2 /nobreak >nul
+echo.
+echo Press any key to return to the menu...
+pause >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
@@ -201,8 +206,9 @@ print('Done. Check dashboard for Brute Force.')
 "
 %PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-echo Returning to menu in 2 seconds...
-timeout /t 2 /nobreak >nul
+echo.
+echo Press any key to return to the menu...
+pause >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
@@ -226,8 +232,9 @@ print('Done. Check dashboard for Brute Force.')
 "
 %PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
 echo.
-echo Returning to menu in 2 seconds...
-timeout /t 2 /nobreak >nul
+echo.
+echo Press any key to return to the menu...
+pause >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
@@ -252,8 +259,9 @@ print(f'Done in {time.time()-t0:.1f}s. Check dashboard for DDoS.')
 "
 echo.
 %PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
-echo Returning to menu in 2 seconds...
-timeout /t 2 /nobreak >nul
+echo.
+echo Press any key to return to the menu...
+pause >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
@@ -278,8 +286,9 @@ print(f'Done in {time.time()-t0:.1f}s. Check dashboard for DDoS.')
 "
 echo.
 %PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
-echo Returning to menu in 2 seconds...
-timeout /t 2 /nobreak >nul
+echo.
+echo Press any key to return to the menu...
+pause >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
@@ -303,12 +312,12 @@ print('Scan done. Check dashboard for PortScan.')
 "
 echo.
 %PY% -c "import json, urllib.request; r=json.loads(urllib.request.urlopen('http://localhost:5001/api/stats', timeout=3).read()); th=[c for c in r.get('connections',[]) if c.get('is_threat')]; print('Detected threats:', len(th)); print(th[0] if th else 'NONE')"
-echo Returning to menu in 2 seconds...
-timeout /t 2 /nobreak >nul
+echo.
+echo Press any key to return to the menu...
+pause >nul
 goto MAIN_MENU
 
 :: ─────────────────────────────────────────────────────────────────────
-:EXIT
 :EXIT
 endlocal
 exit /b 0
