@@ -95,10 +95,6 @@ python -m pip install -r requirements.txt
 if errorlevel 1 (
     echo.
     echo ERROR: Failed to install root requirements.txt.
-    echo.
-    echo If the error mentions netifaces or build tools:
-    echo   Install Microsoft C++ Build Tools, then run this setup again.
-    echo   https://visualstudio.microsoft.com/visual-cpp-build-tools/
     pause
     exit /b 1
 )

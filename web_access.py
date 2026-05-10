@@ -270,6 +270,11 @@ proxy_thread  = None
 captured_urls = []
 ml_detector   = WebAccessMLDetector()
 
+
+def ml_model_available():
+    return ml_detector.model is not None
+
+
 current_stats = {
     'total_captured': 0,
     'recent_urls': [],
@@ -278,7 +283,7 @@ current_stats = {
     'threat_count': 0,
     'benign_count': 0,
     'attack_breakdown': {},
-    'ml_loaded': ml_detector.loaded,
+    'ml_loaded': ml_model_available(),
     'ml_load_status': ml_detector.load_status
 }
 
@@ -495,9 +500,9 @@ def get_urls():
 @app.route('/api/ml_status')
 def get_ml_status():
     return jsonify({
-        'loaded': ml_detector.loaded,
+        'loaded': ml_model_available(),
         'load_status': ml_detector.load_status,
-        'model_available': ml_detector.model is not None,
+        'model_available': ml_model_available(),
         'threat_count': current_stats['threat_count'],
         'benign_count': current_stats['benign_count'],
         'attack_breakdown': current_stats['attack_breakdown']
@@ -511,7 +516,7 @@ def clear_stats():
     current_stats = {
         'total_captured': 0, 'recent_urls': [], 'domain_frequency': {},
         'capture_rate': 0, 'threat_count': 0, 'benign_count': 0,
-        'attack_breakdown': {}, 'ml_loaded': ml_detector.loaded,
+        'attack_breakdown': {}, 'ml_loaded': ml_model_available(),
         'ml_load_status': ml_detector.load_status
     }
     socketio.emit('stats_cleared')
@@ -627,7 +632,8 @@ def handle_connect():
     logger.info(f"Client connected: {request.sid}")
     emit('connected', {
         'status': 'connected',
-        'ml_loaded': ml_detector.loaded,
+        'ml_loaded': ml_model_available(),
+        'model_available': ml_model_available(),
         'ml_status': ml_detector.load_status
     })
     if current_stats['total_captured'] > 0:
@@ -671,7 +677,7 @@ def handle_clear_stats():
     current_stats = {
         'total_captured': 0, 'recent_urls': [], 'domain_frequency': {},
         'capture_rate': 0, 'threat_count': 0, 'benign_count': 0,
-        'attack_breakdown': {}, 'ml_loaded': ml_detector.loaded,
+        'attack_breakdown': {}, 'ml_loaded': ml_model_available(),
         'ml_load_status': ml_detector.load_status
     }
     emit('stats_cleared')

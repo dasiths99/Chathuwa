@@ -59,9 +59,3 @@ https://npcap.com/
 ```
 
 Then run `start_full_project_admin.bat`.
-
-If `netifaces` fails during setup, install Microsoft C++ Build Tools and run setup again:
-
-```text
-https://visualstudio.microsoft.com/visual-cpp-build-tools/
-```

@@ -880,7 +880,7 @@ Web Access Monitor &nbsp;|&nbsp; ML-Powered Attack Detection &nbsp;|&nbsp; ${now
         });
 
         socket.on('connected', (data) => {
-            if (data.ml_loaded !== undefined) updateMLStatus({ ml_loaded: data.ml_loaded });
+            if (data.ml_loaded !== undefined || data.model_available !== undefined) updateMLStatus(data);
         });
     }
 
