@@ -1,0 +1,46 @@
+{
+    "optimization_performed": true,
+    "target_anomaly_rate": 0.1,
+    "optimization_results": {
+        "isolation_forest_simple": {
+            "optimized_parameter": "contamination",
+            "best_value": 0.1,
+            "optimization_score": 1.0,
+            "val_anomaly_rate": 0.1
+        },
+        "reconstruction_baseline": {
+            "optimized_parameter": "threshold_multiplier",
+            "best_value": 1.0,
+            "optimization_score": 0.9895833333333333,
+            "train_anomaly_rate": 0.09416666666666666,
+            "val_anomaly_rate": 0.115
+        }
+    },
+    "comparison": [
+        {
+            "Model": "isolation_forest_simple",
+            "Original_Anomaly_Rate": 0.1,
+            "Optimized_Anomaly_Rate": 0.1,
+            "Improvement": 0.0,
+            "Optimized_Parameter": "contamination",
+            "Optimized_Value": 0.1
+        },
+        {
+            "Model": "reconstruction_baseline",
+            "Original_Anomaly_Rate": 0.115,
+            "Optimized_Anomaly_Rate": 0.115,
+            "Improvement": 0.0,
+            "Optimized_Parameter": "threshold_multiplier",
+            "Optimized_Value": 1.0
+        }
+    ],
+    "best_optimized_model": "isolation_forest_simple",
+    "best_optimized_anomaly_rate": 0.1,
+    "optimization_timestamp": "2026-05-10T01:00:47.982423",
+    "ensemble_created": true,
+    "ensemble_models": [
+        "isolation_forest_simple",
+        "reconstruction_baseline"
+    ],
+    "ensemble_anomaly_rate": 0.785
+}

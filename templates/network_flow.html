@@ -300,22 +300,14 @@
         </div>
         <div class="status-bar">
             <div id="status" class="status stopped">Stopped</div>
-            <div id="autoCycleStatus" class="auto-cycle-indicator">Auto Cycle OFF</div>
             <div id="connectionStatus" class="connection-status unknown">
                 <span id="connectionText">Checking connection...</span>
             </div>
             <button id="startBtn"     class="btn-start">Start Monitoring</button>
             <button id="stopBtn"      class="btn-stop" disabled>Stop</button>
-            <button id="autoCycleBtn" class="btn-auto-cycle">Auto Cycle OFF</button>
             <button id="clearBtn"     class="btn-clear">Clear Stats</button>
             <button id="refreshBtn"   class="btn-refresh">Refresh</button>
             <button id="reportBtn"    class="btn-report" onclick="downloadReport()">Report</button>
-            <select id="interfaceSelect" class="interface-select">
-                <option value="all">All Interfaces</option>
-            </select>
-        </div>
-        <div style="margin-top:10px">
-            <span id="timerDisplay" class="timer-display">Auto cycle disabled</span>
         </div>
     </header>
 
@@ -487,7 +479,6 @@
 
     let chart = null, networkChart = null, isMonitoring = false;
     let networkHistory = [];
-    let autoCycleActive = false, autoCycleInterval = null, cycleTimer = null, remainingTime = 15;
 
     let mlStats = {
         normal: 0, threats: 0, totalPredictions: 0,
@@ -794,51 +785,6 @@
         } catch(e) {}
     }
 
-    function startAutoCycle() {
-        if (autoCycleActive) return;
-        autoCycleActive = true; remainingTime = 15; updateTimerDisplay();
-        document.getElementById('autoCycleBtn').textContent = 'Auto Cycle ON';
-        document.getElementById('autoCycleBtn').classList.add('active');
-        document.getElementById('autoCycleStatus').innerHTML = 'Auto Cycle ACTIVE';
-        document.getElementById('autoCycleStatus').classList.add('auto-cycle-active');
-        performAutoCycle();
-    }
-
-    function stopAutoCycle() {
-        if (!autoCycleActive) return;
-        autoCycleActive = false;
-        if (autoCycleInterval) { clearInterval(autoCycleInterval); autoCycleInterval = null; }
-        if (cycleTimer)        { clearTimeout(cycleTimer);         cycleTimer = null; }
-        document.getElementById('autoCycleBtn').textContent = 'Auto Cycle OFF';
-        document.getElementById('autoCycleBtn').classList.remove('active');
-        document.getElementById('autoCycleStatus').innerHTML = 'Auto Cycle OFF';
-        document.getElementById('autoCycleStatus').classList.remove('auto-cycle-active');
-        document.getElementById('timerDisplay').textContent = 'Auto cycle disabled';
-    }
-
-    function performAutoCycle() {
-        if (!autoCycleActive) return;
-        socket.emit('start_monitoring', { interface: document.getElementById('interfaceSelect').value });
-        cycleTimer = setTimeout(() => {
-            if (autoCycleActive) {
-                socket.emit('stop_monitoring');
-                setTimeout(() => { if (autoCycleActive) { remainingTime = 15; updateTimerDisplay(); performAutoCycle(); } }, 1000);
-            }
-        }, 15000);
-        let elapsed = 0;
-        if (autoCycleInterval) clearInterval(autoCycleInterval);
-        autoCycleInterval = setInterval(() => {
-            if (autoCycleActive) { elapsed++; remainingTime = 15 - elapsed; updateTimerDisplay(); if (remainingTime <= 0) { clearInterval(autoCycleInterval); autoCycleInterval = null; } }
-        }, 1000);
-    }
-
-    function updateTimerDisplay() {
-        const el = document.getElementById('timerDisplay');
-        if (autoCycleActive && remainingTime > 0) { el.textContent = `Next stop in: ${remainingTime}s`; el.style.color = 'var(--green)'; }
-        else if (autoCycleActive)                 { el.textContent = 'Switching...'; el.style.color = 'var(--yellow)'; }
-        else                                      { el.textContent = 'Auto cycle disabled'; el.style.color = 'var(--text-3)'; }
-    }
-
     async function downloadReport() {
         try {
             const [statsRes, statusRes] = await Promise.all([
@@ -924,24 +870,11 @@ ${connRows||'<tr><td colspan=7 style="color:#64748b;text-align:center;padding:20
     function formatBandwidth(bps) { if (!bps) return '0'; return (bps/1024).toFixed(1); }
     function formatUptime(s) { if (!s) return '0'; const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60); return h>0?`${h}h ${m}m ${sec}s`:m>0?`${m}m ${sec}s`:`${sec}s`; }
 
-    document.getElementById('startBtn').onclick     = () => { if (autoCycleActive) stopAutoCycle(); socket.emit('start_monitoring', { interface: document.getElementById('interfaceSelect').value }); };
-    document.getElementById('stopBtn').onclick      = () => { if (autoCycleActive) stopAutoCycle(); socket.emit('stop_monitoring'); };
-    document.getElementById('autoCycleBtn').onclick = () => { if (autoCycleActive) { stopAutoCycle(); if (isMonitoring) socket.emit('stop_monitoring'); } else startAutoCycle(); };
+    document.getElementById('startBtn').onclick     = () => { socket.emit('start_monitoring', { interface: 'all' }); };
+    document.getElementById('stopBtn').onclick      = () => { socket.emit('stop_monitoring'); };
     document.getElementById('clearBtn').onclick     = () => { if (confirm('Clear all statistics?')) socket.emit('clear_stats'); };
     document.getElementById('refreshBtn').onclick   = () => { socket.emit('request_refresh'); };
     document.getElementById('refreshNetworkBtn').onclick = updateNetworkInfo;
-
-    async function loadInterfaces() {
-        try {
-            const res   = await fetch(`http://${window.location.hostname}:${currentPort}/api/interfaces`);
-            const ifaces = await res.json();
-            const select = document.getElementById('interfaceSelect');
-            if (ifaces?.length) {
-                select.innerHTML = '<option value="all">All Interfaces</option>';
-                ifaces.forEach(iface => { const opt = document.createElement('option'); opt.value = iface.name; opt.textContent = iface.description || iface.name; select.appendChild(opt); });
-            }
-        } catch(e) {}
-    }
 
     async function loadStatus() {
         try {
@@ -993,7 +926,7 @@ ${connRows||'<tr><td colspan=7 style="color:#64748b;text-align:center;padding:20
 
     function init() {
         initChart(); initNetworkChart();
-        loadInterfaces(); loadStatus(); fetchInitialStats(); updateNetworkInfo();
+        loadStatus(); fetchInitialStats(); updateNetworkInfo();
         setInterval(loadStatus, 5000); setInterval(fetchInitialStats, 2000); setInterval(updateNetworkInfo, 1000);
     }
 

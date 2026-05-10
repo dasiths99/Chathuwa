@@ -1,0 +1,105 @@
+{
+    "collection_date": "2026-05-09T19:32:35.465207",
+    "python_version": "3.12.12",
+    "platform": {
+        "system": "Linux",
+        "release": "6.6.122+",
+        "version": "#1 SMP Thu Apr 30 18:17:14 UTC 2026",
+        "machine": "x86_64",
+        "processor": "x86_64"
+    },
+    "libraries": {
+        "numpy": {
+            "version": "2.0.2",
+            "category": "core"
+        },
+        "pandas": {
+            "version": "2.3.3",
+            "category": "core"
+        },
+        "scikit-learn": {
+            "version": "1.6.1",
+            "category": "core"
+        },
+        "matplotlib": {
+            "version": "3.10.0",
+            "category": "core"
+        },
+        "seaborn": {
+            "version": "0.13.2",
+            "category": "core"
+        },
+        "tensorflow": {
+            "version": "2.19.0",
+            "category": "core"
+        },
+        "keras": {
+            "version": "3.10.0",
+            "category": "core"
+        },
+        "xgboost": {
+            "version": "3.2.0",
+            "category": "core"
+        },
+        "lightgbm": {
+            "version": "4.6.0",
+            "category": "core"
+        },
+        "catboost": {
+            "version": "1.2.10",
+            "category": "core"
+        },
+        "joblib": {
+            "version": "1.5.3",
+            "category": "core"
+        },
+        "plotly": {
+            "version": "5.24.1",
+            "category": "core"
+        },
+        "scipy": {
+            "version": "1.16.3",
+            "category": "additional"
+        },
+        "statsmodels": {
+            "version": "0.14.6",
+            "category": "additional"
+        },
+        "nltk": {
+            "version": "3.9.1",
+            "category": "additional"
+        },
+        "spacy": {
+            "version": "3.8.11",
+            "category": "additional"
+        },
+        "networkx": {
+            "version": "3.6.1",
+            "category": "additional"
+        },
+        "shap": {
+            "version": "0.50.0",
+            "category": "additional"
+        },
+        "lime": {
+            "version": "Unknown",
+            "category": "additional"
+        },
+        "psutil": {
+            "version": "5.9.5",
+            "category": "additional"
+        }
+    },
+    "environment_info": {
+        "python_executable": "/usr/bin/python3",
+        "working_directory": "/kaggle/working",
+        "cpu_count": 4,
+        "total_memory_gb": 31.350616455078125
+    },
+    "failed_imports": [
+        "imbalanced-learn",
+        "pyod",
+        "alibi",
+        "eli5"
+    ]
+}

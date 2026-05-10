@@ -125,9 +125,10 @@
         /* Component Cards */
         .components-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 20px;
         }
+        @media (max-width: 1200px) { .components-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 900px) { .components-grid { grid-template-columns: 1fr; } }
 
         .comp-card {
@@ -148,6 +149,7 @@
         .bar-network { background: linear-gradient(90deg, var(--cyan), transparent); }
         .bar-web     { background: linear-gradient(90deg, var(--purple), transparent); }
         .bar-file    { background: linear-gradient(90deg, var(--green), transparent); }
+        .bar-system  { background: linear-gradient(90deg, var(--yellow), transparent); }
 
         .comp-header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 
@@ -184,6 +186,7 @@
         .dot-cyan   { background: var(--cyan); }
         .dot-purple { background: var(--purple); }
         .dot-green  { background: var(--green); }
+        .dot-yellow { background: var(--yellow); }
 
         .port-tag {
             display: inline-block; font-family: 'JetBrains Mono', monospace;
@@ -206,6 +209,8 @@
         .launch-web:hover     { background: rgba(168,85,247,0.08); }
         .launch-file    { border-color: rgba(0,229,160,0.4); color: var(--green); }
         .launch-file:hover    { background: rgba(0,229,160,0.08); }
+        .launch-system  { border-color: rgba(255,179,0,0.4); color: var(--yellow); }
+        .launch-system:hover  { background: rgba(255,179,0,0.08); }
 
         /* Info panel */
         .info-panel {
@@ -262,7 +267,7 @@
         </div>
         <div class="sys-card">
             <div class="sys-card-icon icon-green">SVC</div>
-            <div class="sys-value" id="active-services">3</div>
+            <div class="sys-value" id="active-services">4</div>
             <div class="sys-label">Active Services</div>
         </div>
         <div class="sys-card">
@@ -352,6 +357,30 @@
             </div>
         </div>
 
+        <!-- API Analysis -->
+        <div class="comp-card">
+            <div class="comp-header">
+                <div class="comp-header-bar bar-system"></div>
+                <div class="comp-header-top">
+                    <div class="comp-icon icon-yellow">API</div>
+                    <span class="status-pill pill-checking" id="system-core-status">Checking...</span>
+                </div>
+                <div class="comp-title">Post-incident API Behavior Analysis</div>
+                <div class="comp-desc">CSV-driven API behavior investigation with normal, bot, outlier, and attack classification</div>
+            </div>
+            <div class="comp-body">
+                <ul class="feature-list">
+                    <li><span class="feat-dot dot-yellow"></span>Post-incident CSV investigation</li>
+                    <li><span class="feat-dot dot-yellow"></span>API behavior classification</li>
+                    <li><span class="feat-dot dot-yellow"></span>Prediction summary dashboard</li>
+                    <li><span class="feat-dot dot-yellow"></span>Detailed records table</li>
+                    <li><span class="feat-dot dot-yellow"></span>Forensic report generation</li>
+                </ul>
+                <div><span class="port-tag">localhost:5005</span></div>
+                <button class="launch-btn launch-system" onclick="openComponent('system')">Launch API Analysis</button>
+            </div>
+        </div>
+
     </div>
 
     <!-- Endpoint Info -->
@@ -374,6 +403,10 @@
                 <div class="info-label">File / Mouse Monitor</div>
                 <div class="info-val">localhost:5003</div>
             </div>
+            <div class="info-item">
+                <div class="info-label">API Behavior Analysis</div>
+                <div class="info-val">localhost:5005</div>
+            </div>
         </div>
     </div>
 
@@ -385,7 +418,12 @@
     let startTime = new Date();
 
     function openComponent(component) {
-        const urls = { network: 'http://localhost:5001', web: 'http://localhost:5002', file: 'http://localhost:5003' };
+        const urls = {
+            network: 'http://localhost:5001',
+            web: 'http://localhost:5002',
+            file: 'http://localhost:5003',
+            system: 'http://localhost:5005'
+        };
         if (urls[component]) window.open(urls[component], '_blank');
     }
 
@@ -408,10 +446,11 @@
             setStatus('network-status', data.network_flow?.running);
             setStatus('web-status',     data.web_access?.running);
             setStatus('file-status',    data.file_mouse?.running);
+            setStatus('system-core-status', data.system_core?.running);
 
             document.getElementById('active-services').textContent = active;
         } catch {
-            ['network-status','web-status','file-status'].forEach(id => {
+            ['network-status','web-status','file-status','system-core-status'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) { el.textContent = 'Offline'; el.className = 'status-pill pill-inactive'; }
             });

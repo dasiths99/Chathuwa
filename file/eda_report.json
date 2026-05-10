@@ -1,0 +1,47 @@
+{
+    "dataset_shape": [
+        9999,
+        5
+    ],
+    "target_column": "synthetic_target",
+    "target_distribution": {
+        "0": 9000,
+        "1": 999
+    },
+    "numerical_features_count": 3,
+    "categorical_features_count": 1,
+    "temporal_features_count": 0,
+    "data_quality_metrics": {
+        "Completeness": "100.00%",
+        "Consistency": "To be assessed based on business rules",
+        "Accuracy": "To be validated with domain knowledge",
+        "Uniqueness": "Duplicate rows: 0 (0.00%)",
+        "Timeliness": "Current data up to analysis time",
+        "Validity": "Checking data types and ranges"
+    },
+    "correlation_insights": "Found 0 highly correlated pairs",
+    "outlier_insights": [
+        {
+            "feature": "user",
+            "outliers": 0,
+            "percentage": "0.00%",
+            "lower_bound": -2486.25,
+            "upper_bound": 7511.75
+        },
+        {
+            "feature": "pc",
+            "outliers": 0,
+            "percentage": "0.00%",
+            "lower_bound": -3612.5,
+            "upper_bound": 14595.5
+        },
+        {
+            "feature": "Rapid_file_access",
+            "outliers": 537,
+            "percentage": "5.37%",
+            "lower_bound": 0.0,
+            "upper_bound": 0.0
+        }
+    ],
+    "eda_timestamp": "2026-05-10T01:00:37.064716"
+}

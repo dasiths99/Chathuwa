@@ -1,0 +1,77 @@
+{
+    "model_types": [
+        "unsupervised"
+    ],
+    "model_configurations": {
+        "unsupervised": {
+            "simple_autoencoder": {
+                "description": "Simple neural network autoencoder",
+                "params": {
+                    "input_dim": 26,
+                    "encoding_dim": 16,
+                    "hidden_layers": [
+                        32,
+                        16
+                    ],
+                    "learning_rate": 0.001
+                }
+            },
+            "isolation_forest_simple": {
+                "description": "Simplified isolation forest implementation",
+                "params": {
+                    "n_trees": 100,
+                    "max_samples": 256,
+                    "contamination": 0.1
+                }
+            },
+            "reconstruction_baseline": {
+                "description": "Baseline reconstruction error model",
+                "params": {
+                    "threshold_multiplier": 2.0
+                }
+            }
+        }
+    },
+    "dataset_info": {
+        "X_train_shape": [
+            7200,
+            26
+        ],
+        "X_val_shape": [
+            800,
+            26
+        ],
+        "X_test_shape": [
+            1999,
+            26
+        ],
+        "has_target": false
+    },
+    "training_timestamp": "2026-05-10T01:00:44.824050",
+    "trained_models": [
+        "isolation_forest_simple",
+        "reconstruction_baseline"
+    ],
+    "model_metrics": {
+        "isolation_forest_simple": {
+            "training_time": 1.1273350715637207,
+            "train_anomaly_rate": 0.1,
+            "val_anomaly_rate": 0.1,
+            "train_scores_mean": -0.7809258320006618,
+            "val_scores_mean": -0.7761643425036087,
+            "train_scores_std": 0.2534262105823132,
+            "val_scores_std": 0.26335235646335214
+        },
+        "reconstruction_baseline": {
+            "training_time": 0.014114141464233398,
+            "train_anomaly_rate": 0.09416666666666666,
+            "val_anomaly_rate": 0.115,
+            "train_scores_mean": 2.6144365476828586,
+            "val_scores_mean": 2.9432937152097822,
+            "train_scores_std": 4.879950566142268,
+            "val_scores_std": 5.335564980195191
+        }
+    },
+    "training_completed": true,
+    "completion_timestamp": "2026-05-10T01:00:46.061480"
+}

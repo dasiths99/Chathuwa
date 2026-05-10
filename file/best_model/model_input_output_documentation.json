@@ -1,0 +1,108 @@
+{
+    "model_inputs": {
+        "feature_count": 26,
+        "features": [
+            "Out_of_Working_Hours_encoded_log",
+            "Out_of_Working_Hours_encoded_sqrt",
+            "numerical_max",
+            "Out_of_Working_Hours_encoded",
+            "user_access_rank",
+            "user_bin",
+            "numerical_range",
+            "numerical_std",
+            "pc_sqrt",
+            "user",
+            "user_sqrt",
+            "user_bin_ew",
+            "pc_cubed",
+            "pc",
+            "Rapid_file_access",
+            "pc_bin",
+            "numerical_min",
+            "pc_log",
+            "numerical_mean",
+            "user_access_frequency",
+            "user_log",
+            "user_cubed",
+            "Rapid_file_access_bin_ew",
+            "pc_squared",
+            "user_squared",
+            "pc_bin_ew"
+        ],
+        "feature_categories": {},
+        "input_format": {
+            "type": "Numerical feature vector",
+            "shape": "(n_samples, 26)",
+            "scaling_applied": false
+        },
+        "data_requirements": {
+            "missing_values": "Should be handled before input",
+            "scaling": "Required (use provided scalers)",
+            "feature_order": "Must match training feature order"
+        }
+    },
+    "model_outputs": {
+        "model_type": "Unsupervised",
+        "output_format": {
+            "type": "Anomaly detection",
+            "predictions": "Binary (-1 = anomaly, 1 = normal) or continuous scores",
+            "threshold": "Score > 0.5 typically indicates anomaly"
+        },
+        "interpretation": {
+            "-1 or score > 0.5": "Anomalous access pattern",
+            "1 or score <= 0.5": "Normal access pattern"
+        }
+    },
+    "model_files": {
+        "essential_files": [
+            {
+                "name": "isolation_forest_simple.pkl",
+                "type": "Pickled Model",
+                "purpose": "Trained model for prediction"
+            },
+            {
+                "name": "reconstruction_baseline.pkl",
+                "type": "Pickled Model",
+                "purpose": "Trained model for prediction"
+            }
+        ],
+        "component_files": [
+            {
+                "name": "best_model_info.json",
+                "type": "JSON Configuration",
+                "purpose": "Configuration or preprocessing component"
+            },
+            {
+                "name": "dataset_stats.json",
+                "type": "JSON Configuration",
+                "purpose": "Configuration or preprocessing component"
+            },
+            {
+                "name": "feature_names.json",
+                "type": "JSON Configuration",
+                "purpose": "Configuration or preprocessing component"
+            },
+            {
+                "name": "metadata.json",
+                "type": "JSON Configuration",
+                "purpose": "Configuration or preprocessing component"
+            },
+            {
+                "name": "summary_report.json",
+                "type": "JSON Configuration",
+                "purpose": "Configuration or preprocessing component"
+            },
+            {
+                "name": "test_results.json",
+                "type": "JSON Configuration",
+                "purpose": "Configuration or preprocessing component"
+            }
+        ],
+        "paths": {
+            "model_directory": "c:\\Users\\Dassa\\Pictures\\Research\\Research\\file\\best_model",
+            "feature_names": "c:\\Users\\Dassa\\Pictures\\Research\\Research\\file\\best_model\\feature_names.json",
+            "scalers": "c:\\Users\\Dassa\\Pictures\\Research\\Research\\file\\best_model\\scaler_info.json"
+        }
+    },
+    "created_at": "2026-05-10T01:00:51.829702"
+}

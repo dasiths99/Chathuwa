@@ -1,0 +1,63 @@
+{
+    "original_shape": [
+        18050,
+        11
+    ],
+    "preprocessed_shape": [
+        9999,
+        4
+    ],
+    "removed_constant_columns": [
+        "id",
+        "timestamp",
+        "filename",
+        "extension",
+        "file_signature",
+        "from_removable_media",
+        "content",
+        "year",
+        "month",
+        "day",
+        "hour",
+        "minute",
+        "second",
+        "dayofweek",
+        "dayofyear",
+        "quarter",
+        "is_weekend",
+        "weekofyear",
+        "hour_sin",
+        "hour_cos",
+        "day_sin",
+        "day_cos"
+    ],
+    "removed_duplicates": 8051,
+    "categorical_columns": [
+        "Out_of_Working_Hours"
+    ],
+    "numerical_columns": [
+        "user",
+        "pc",
+        "Rapid_file_access"
+    ],
+    "temporal_features": [
+        "year",
+        "month",
+        "day",
+        "hour",
+        "minute",
+        "second",
+        "dayofweek",
+        "dayofyear",
+        "quarter",
+        "is_weekend",
+        "weekofyear",
+        "hour_sin",
+        "hour_cos",
+        "day_sin",
+        "day_cos"
+    ],
+    "timestamp_column": "timestamp",
+    "target_column": "Out_of_Working_Hours",
+    "preprocessing_timestamp": "2026-05-10T01:00:31.921206"
+}

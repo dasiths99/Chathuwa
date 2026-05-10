@@ -1,0 +1,55 @@
+{
+    "project_name": "File Access Pattern Anomaly Detection",
+    "creation_date": "2026-05-09T19:28:21.514146",
+    "model_info": {
+        "name": "isolation_forest_simple",
+        "type": "SimpleIsolationForest",
+        "score": 0.0,
+        "source_directory": "early_model_fixed"
+    },
+    "data_info": {
+        "test_set_size": 1999,
+        "feature_count": 26,
+        "feature_names_sample": [
+            "user_bin",
+            "numerical_range",
+            "Out_of_Working_Hours_encoded",
+            "user_cubed",
+            "Out_of_Working_Hours_encoded_sqrt",
+            "user_sqrt",
+            "user_squared",
+            "pc_sqrt",
+            "user_access_rank",
+            "numerical_std"
+        ]
+    },
+    "evaluation_summary": {
+        "model_name": "isolation_forest_simple",
+        "model_type": "SimpleIsolationForest",
+        "evaluation_timestamp": "2026-05-09T19:28:20.281401",
+        "test_set_size": 1999,
+        "score_statistics": {
+            "mean": -0.7839561210710202,
+            "std": 0.2726485210683834,
+            "min": -1.7087413664709468,
+            "max": -0.23769687068848594
+        },
+        "predictions": {
+            "total_samples": 1999,
+            "normal_samples": 200,
+            "anomaly_samples": 1799,
+            "anomaly_rate_percent": 89.99499749874937,
+            "prediction_time_seconds": 0.3960764408111572
+        }
+    },
+    "files_included": [
+        "test_results.json",
+        "isolation_forest_simple.pkl",
+        "dataset_stats.json",
+        "best_model_info.json",
+        "model_comparison.csv",
+        "reconstruction_baseline.pkl",
+        "metadata.json",
+        "feature_names.json"
+    ]
+}

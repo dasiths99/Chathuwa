@@ -107,17 +107,6 @@
             flex: 1; justify-content: center; flex-wrap: wrap;
         }
 
-        #model-status-pill {
-            font-size: 11px; font-weight: 500;
-            padding: 5px 12px; border-radius: 20px;
-            border: 1px solid var(--border); background: var(--bg-card);
-            color: var(--text-2);
-            display: flex; align-items: center; gap: 6px; white-space: nowrap;
-        }
-        #model-status-pill.ok   { border-color: rgba(0,229,160,0.3);  color: var(--green);  background: var(--green-dim); }
-        #model-status-pill.warn { border-color: rgba(255,179,0,0.3);  color: var(--yellow); background: var(--yellow-dim); }
-        #model-status-pill.err  { border-color: rgba(255,59,92,0.3);  color: var(--red);    background: var(--red-dim); }
-
         .live-badge {
             display: flex; align-items: center; gap: 6px;
             font-size: 11px; font-weight: 600; letter-spacing: 1px;
@@ -370,7 +359,6 @@
             <p>File &amp; Mouse Movement Anomaly Detection — ML-Powered</p>
         </div>
         <div class="header-status">
-            <div id="model-status-pill">Loading models...</div>
             <div class="live-badge stopped" id="liveBadge">
                 <div class="live-dot"></div>
                 <span id="liveLabel">STOPPED</span>
@@ -694,24 +682,7 @@
     });
 
     async function checkModelStatus() {
-        try {
-            const res = await fetch('/api/status');
-            const data = await res.json();
-            const pill = $('model-status-pill');
-            if (data.models_loaded) {
-                const both = data.file_model_loaded && data.mouse_model_loaded;
-                const any  = data.file_model_loaded || data.mouse_model_loaded;
-                if (both)      { pill.textContent = 'ML Models Active';  pill.className = 'ok'; }
-                else if (any)  { pill.textContent = 'Partial Models';    pill.className = 'warn'; }
-                else           { pill.textContent = 'Heuristic Mode';    pill.className = 'err'; }
-            } else {
-                pill.textContent = 'No ML models loaded - Simulation mode';
-                pill.className = 'err';
-            }
-        } catch {
-            $('model-status-pill').textContent = 'No ML models loaded - Simulation mode';
-            $('model-status-pill').className = 'err';
-        }
+        // Model status is intentionally hidden from the header UI.
     }
 
     function setLive(running) {

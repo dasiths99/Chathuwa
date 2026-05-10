@@ -1,0 +1,17 @@
+{
+    "original_shape": [
+        18050,
+        11
+    ],
+    "forwarding_status": true,
+    "timestamp": "2026-05-10T01:00:31.562171",
+    "target_columns": [
+        "Out_of_Working_Hours",
+        "Unusual_file_access",
+        "Data_exfilteration",
+        "signature_mismatch",
+        "Access_Frequency_Anomaly",
+        "Executable_File_Access",
+        "Content_Mismatch"
+    ]
+}

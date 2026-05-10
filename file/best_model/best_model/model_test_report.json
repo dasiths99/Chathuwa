@@ -1,0 +1,100 @@
+{
+    "test_configuration": {
+        "model_file": "isolation_forest_simple.pkl",
+        "model_type": "SimpleIsolationForest",
+        "feature_count": 26,
+        "scalers_used": [],
+        "test_timestamp": "2026-05-09T19:32:24.179162"
+    },
+    "test_results": [
+        {
+            "scenario": "Normal Business Pattern",
+            "input_features_count": 26,
+            "timestamp": "2026-05-09T19:28:21.709909",
+            "prediction": 1,
+            "prediction_label": "NORMAL",
+            "anomaly_score": -154.33570223980658,
+            "confidence_percent": 0.0,
+            "input_features_sample": {
+                "user_bin": 500.0,
+                "numerical_range": 0.0,
+                "Out_of_Working_Hours_encoded": 14.0,
+                "user_cubed": 500.0,
+                "Out_of_Working_Hours_encoded_sqrt": 14.0
+            }
+        },
+        {
+            "scenario": "Unusual Time Access",
+            "input_features_count": 26,
+            "timestamp": "2026-05-09T19:28:21.717175",
+            "prediction": 1,
+            "prediction_label": "NORMAL",
+            "anomaly_score": -3024.477777205807,
+            "confidence_percent": 0.0,
+            "input_features_sample": {
+                "user_bin": 9999.0,
+                "numerical_range": 10.0,
+                "Out_of_Working_Hours_encoded": 3.0,
+                "user_cubed": 9999.0,
+                "Out_of_Working_Hours_encoded_sqrt": 3.0
+            }
+        },
+        {
+            "scenario": "Extreme Frequency",
+            "input_features_count": 26,
+            "timestamp": "2026-05-09T19:28:21.721253",
+            "prediction": 1,
+            "prediction_label": "NORMAL",
+            "anomaly_score": -33.46831919318156,
+            "confidence_percent": 0.0,
+            "input_features_sample": {
+                "user_bin": 5.13531257179342,
+                "numerical_range": 3.7109519654420113,
+                "Out_of_Working_Hours_encoded": 10.0,
+                "user_cubed": -0.7630453846949574,
+                "Out_of_Working_Hours_encoded_sqrt": 10.0
+            }
+        },
+        {
+            "scenario": "Mixed Pattern",
+            "input_features_count": 26,
+            "timestamp": "2026-05-09T19:28:21.725189",
+            "prediction": 1,
+            "prediction_label": "NORMAL",
+            "anomaly_score": -3.8784142396882832,
+            "confidence_percent": 30.607928801558586,
+            "input_features_sample": {
+                "user_bin": -6.519038700566253,
+                "numerical_range": 2.958076859584313,
+                "Out_of_Working_Hours_encoded": 13.0,
+                "user_cubed": -0.37912017948392746,
+                "Out_of_Working_Hours_encoded_sqrt": 2.0
+            }
+        }
+    ],
+    "analysis": {
+        "total_tests": 4,
+        "prediction_distribution": {
+            "NORMAL": {
+                "count": 4,
+                "percentage": 100.0
+            }
+        },
+        "score_statistics": {
+            "anomaly_scores": {
+                "mean": -804.040053219621,
+                "std": 1283.208758889081,
+                "min": -3024.477777205807,
+                "max": -3.8784142396882832,
+                "median": -93.90201071649406
+            },
+            "confidences": {
+                "mean": 7.6519822003896465,
+                "std": 13.253621949687563,
+                "min": 0.0,
+                "max": 30.607928801558586,
+                "median": 0.0
+            }
+        }
+    }
+}

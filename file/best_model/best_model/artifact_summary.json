@@ -1,0 +1,28 @@
+{
+    "project_overview": {
+        "name": "File Access Pattern Anomaly Detection",
+        "description": "Machine learning system for detecting anomalous file access patterns",
+        "creation_date": "2026-05-09 19:32:35",
+        "model_directory": "/kaggle/working/best_model"
+    },
+    "key_findings": [],
+    "recommendations": [
+        "Implement model monitoring for concept drift detection",
+        "Create A/B testing framework for model updates",
+        "Develop explainability dashboard for security analysts"
+    ],
+    "artifacts_available": {
+        "dataset": [],
+        "model": [
+            "training_pipeline",
+            "performance"
+        ],
+        "features": [
+            "final_features"
+        ],
+        "configuration": [
+            "environment",
+            "input_output"
+        ]
+    }
+}

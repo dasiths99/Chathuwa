@@ -1,0 +1,21 @@
+{
+    "problem_type": "Binary Classification",
+    "has_labels": true,
+    "target_column": "synthetic_target",
+    "class_imbalance_ratio": 9.00900900900901,
+    "balance_status": "Moderately Imbalanced",
+    "selected_method": "Supervised Learning (Binary Classification)",
+    "final_selection": {
+        "primary_method": "Supervised Learning",
+        "secondary_method": "Unsupervised Learning",
+        "approach": "Hybrid (Supervised + Unsupervised)",
+        "reason": "Labels available but unsupervised can catch novel anomalies",
+        "algorithms": [
+            "Random Forest (Supervised)",
+            "XGBoost (Supervised)",
+            "Isolation Forest (Unsupervised)",
+            "Autoencoder (Unsupervised)"
+        ]
+    },
+    "selection_timestamp": "2026-05-10T01:00:37.160352"
+}

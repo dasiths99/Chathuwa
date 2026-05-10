@@ -2,12 +2,10 @@
 Unified Security Monitoring System - Main Orchestrator
   - Network Flow Monitor  → port 5001  (auto-start)
   - Web Access Monitor    → port 5002  (auto-start)
-  - File & Mouse Monitor  → port 5003  (auto-start)  ← FIXED: was lazy-start
+  - File & Mouse Monitor  → port 5003  (auto-start)
+  - API Behavior Analysis → port 5005  (auto-start from System/)
 
-FIX: f_m.py is now auto-started along with the other two components.
-     The /file-mouse route keeps the loading page as a fallback for the
-     small window while the process is still binding, but the process
-     itself is kicked off immediately on app launch.
+System/ is intentionally trimmed to Post-incident API Behavior Analysis only.
 """
 
 from flask import Flask, render_template, jsonify, redirect as flask_redirect
@@ -31,6 +29,7 @@ components_status = {
     'network_flow': {'running': False, 'port': 5001, 'name': 'Network Traffic Monitor'},
     'web_access':   {'running': False, 'port': 5002, 'name': 'Web Access Monitor'},
     'file_mouse':   {'running': False, 'port': 5003, 'name': 'File & Mouse Monitor'},
+    'system_core':  {'running': False, 'port': 5005, 'name': 'Post-incident API Behavior Analysis'},
 }
 
 processes = {}          # key → subprocess.Popen
@@ -100,6 +99,9 @@ def _make_reader(label: str, stream):
 
 
 def get_component_key(script_name: str):
+    normalized = script_name.replace('\\', '/').lower()
+    if normalized == 'system/app.py' or normalized.endswith('/system/app.py'):
+        return 'system_core'
     if 'network' in script_name:
         return 'network_flow'
     if 'web' in script_name:
@@ -107,6 +109,29 @@ def get_component_key(script_name: str):
     if 'f_m' in script_name:
         return 'file_mouse'
     return None
+
+
+def get_component_python(script_path: str) -> str:
+    """Use a component-local venv when one exists."""
+    try:
+        rel = os.path.relpath(script_path, BASE_DIR).replace('\\', '/').lower()
+        if rel.startswith('system/'):
+            system_python = os.path.join(BASE_DIR, 'System', '.venv', 'Scripts', 'python.exe')
+            cfg_path = os.path.join(BASE_DIR, 'System', '.venv', 'pyvenv.cfg')
+            home_ok = True
+            if os.path.exists(cfg_path):
+                with open(cfg_path, 'r', encoding='utf-8', errors='ignore') as cfg:
+                    for line in cfg:
+                        if line.lower().startswith('home = '):
+                            home_ok = os.path.exists(line.split('=', 1)[1].strip())
+                            break
+            if os.path.exists(system_python) and home_ok:
+                return system_python
+            if os.path.exists(system_python) and not home_ok:
+                print("[app] System/.venv points to a missing Python install; using parent Python", flush=True)
+    except Exception:
+        pass
+    return sys.executable
 
 
 def run_component(script_name: str, port: int):
@@ -132,11 +157,20 @@ def run_component(script_name: str, port: int):
                 components_status[key]['running'] = False
             return
 
+        component_dir = os.path.dirname(script_path) or BASE_DIR
+        env = os.environ.copy()
+        env['PORT'] = str(port)
+        env.setdefault('DEBUG', 'false')
+        env.setdefault('ALLOW_UNSAFE_WERKZEUG', 'true')
+
+        python_executable = get_component_python(script_path)
         process = subprocess.Popen(
-            [sys.executable, script_path],
+            [python_executable, script_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=0,
+            cwd=component_dir,
+            env=env,
         )
         if key:
             processes[key] = process
@@ -229,6 +263,11 @@ def file_mouse():
                      name="FM-EnsureStart").start()
 
     return _FM_LOADING_PAGE
+
+
+@app.route('/system')
+def system_core():
+    return flask_redirect('http://localhost:5005')
 
 
 @app.route('/api/fm_ready')
@@ -387,12 +426,11 @@ if __name__ == '__main__':
     print("=" * 70)
 
     # ── AUTO-START ALL THREE components ──────────────────────────────────────
-    # f_m.py is now included here so port 5003 is up before any browser
-    # request arrives — fixes the "File & Mouse Monitor not working" bug.
     auto_start = [
         ('network.py',    5001),
         ('web_access.py', 5002),
-        ('f_m.py',        5003),   # ← WAS MISSING — now auto-started
+        ('f_m.py',        5003),   # auto-started
+        (os.path.join('System', 'app.py'), 5005),
     ]
 
     for script, port in auto_start:
@@ -415,12 +453,13 @@ if __name__ == '__main__':
     ).start()
 
     print("\n" + "=" * 70)
-    print("✅ ALL THREE COMPONENTS LAUNCHED")
+    print("✅ ALL COMPONENTS LAUNCHED")
     print("=" * 70)
     print("📡 Main Dashboard         : http://localhost:5000")
     print("🌐 Network Flow Monitor   : http://localhost:5001")
     print("🔗 Web Access Monitor     : http://localhost:5002")
-    print("📁 File & Mouse Monitor   : http://localhost:5003  ← AUTO-START (fixed)")
+    print("📁 File & Mouse Monitor   : http://localhost:5003")
+    print("🧭 API Behavior Analysis  : http://localhost:5005")
     print("=" * 70)
     print("⚠️  Run as Administrator for real network packet capture!")
     print("Press CTRL+C to stop all services\n")

@@ -63,6 +63,94 @@ except ImportError:
     np = _NpStub()
 
 # ── Flask / SocketIO ──────────────────────────────────────────────────────────
+class ReconstructionBaseline:
+    """Compatibility class for Kaggle notebook-saved reconstruction_baseline.pkl."""
+
+    def __init__(self, threshold_multiplier=2.0):
+        self.threshold_multiplier = threshold_multiplier
+        self.mean = None
+        self.std = None
+        self.threshold = None
+
+    def predict(self, X):
+        arr = np.array(X, dtype=float)
+        if getattr(arr, 'ndim', 1) == 1:
+            arr = arr.reshape(1, -1)
+        if self.mean is None:
+            return np.zeros(arr.shape[0], dtype=int)
+        std = np.array(self.std, dtype=float) if self.std is not None else 1.0
+        std = np.where(std == 0, 1.0, std)
+        scores = np.mean(np.abs((arr - self.mean) / std), axis=1)
+        threshold = self.threshold
+        if threshold is None:
+            threshold = float(np.mean(scores) + self.threshold_multiplier * np.std(scores))
+        return (scores > threshold).astype(int)
+
+    def decision_function(self, X):
+        arr = np.array(X, dtype=float)
+        if getattr(arr, 'ndim', 1) == 1:
+            arr = arr.reshape(1, -1)
+        if self.mean is None:
+            return np.zeros(arr.shape[0], dtype=float)
+        std = np.array(self.std, dtype=float) if self.std is not None else 1.0
+        std = np.where(std == 0, 1.0, std)
+        return np.mean(np.abs((arr - self.mean) / std), axis=1)
+
+
+class SimpleIsolationForest:
+    """Compatibility class for Kaggle notebook-saved isolation_forest_simple.pkl."""
+
+    def __init__(self, n_trees=100, max_samples=256, contamination=0.1):
+        self.n_trees = n_trees
+        self.max_samples = max_samples
+        self.contamination = contamination
+        self.trees = []
+        self.depths = []
+        self.threshold = None
+
+    def decision_function(self, X):
+        arr = np.array(X, dtype=float)
+        if getattr(arr, 'ndim', 1) == 1:
+            arr = arr.reshape(1, -1)
+        if not self.trees:
+            return np.zeros(arr.shape[0], dtype=float)
+        scores = []
+        for row in arr:
+            path_lengths = []
+            for tree in self.trees:
+                path_lengths.append(self._path_length(row, tree))
+            scores.append(float(np.mean(path_lengths)))
+        return np.array(scores, dtype=float)
+
+    def predict(self, X):
+        scores = self.decision_function(X)
+        threshold = self.threshold
+        if threshold is None:
+            pct = max(0.0, min(100.0, self.contamination * 100.0))
+            threshold = float(np.percentile(scores, pct))
+        return (scores <= threshold).astype(int)
+
+    def _path_length(self, row, node, depth=0):
+        if not isinstance(node, dict):
+            return depth
+        if 'left' not in node or 'right' not in node:
+            return depth
+        feature = int(node.get('feature', 0))
+        split = float(node.get('split', 0.0))
+        if feature >= len(row):
+            return depth
+        branch = node.get('left') if row[feature] <= split else node.get('right')
+        return self._path_length(row, branch, depth + 1)
+
+
+try:
+    import __main__ as _main_module
+    setattr(_main_module, 'ReconstructionBaseline', ReconstructionBaseline)
+    setattr(_main_module, 'SimpleIsolationForest', SimpleIsolationForest)
+except Exception:
+    pass
+
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'file-mouse-secret-key'
 
@@ -128,21 +216,34 @@ event_queue = queue.Queue(maxsize=5000)
 
 FILE_MODEL_PATH  = os.path.join(BASE_DIR, 'file', 'best_model.h5')
 MOUSE_MODEL_PATH = os.path.join(BASE_DIR, 'file', 'lstm_autoencoder_model.h5')
+FILE_PKL_MODEL_DIR = os.path.join(BASE_DIR, 'file', 'best_model')
+FILE_PKL_MODEL_CANDIDATES = [
+    os.path.join(FILE_PKL_MODEL_DIR, 'reconstruction_baseline.pkl'),
+    os.path.join(FILE_PKL_MODEL_DIR, 'isolation_forest_simple.pkl'),
+    os.path.join(BASE_DIR, 'file', 'tuning_model', 'ensemble_model.pkl'),
+    os.path.join(BASE_DIR, 'file', 'tuning_model', 'reconstruction_baseline_optimized.pkl'),
+    os.path.join(BASE_DIR, 'file', 'tuning_model', 'isolation_forest_simple_optimized.pkl'),
+]
+FILE_MODEL_FEATURE_NAMES_PATH = os.path.join(FILE_PKL_MODEL_DIR, 'feature_names.json')
 
 FILE_FEATURE_DIM  = 3
 MOUSE_FEATURE_DIM = 3
 SEQUENCE_LENGTH   = 10
+MOUSE_SPEED_NORMALIZER = 1000.0
 
 
 # ── ML Anomaly Detector ───────────────────────────────────────────────────────
 class MLAnomalyDetector:
     def __init__(self):
         self.file_model              = None
+        self.file_pkl_model          = None
+        self.file_pkl_model_path     = None
+        self.file_pkl_feature_names  = []
         self.mouse_model             = None
         # best_model.h5 is an autoencoder (3→3 sigmoid); threshold is MSE of
         # reconstruction error — 0.05 works well for features in [0,1] range.
         self.file_anomaly_threshold  = 0.05
-        self.mouse_anomaly_threshold = 1.5
+        self.mouse_anomaly_threshold = 0.75
         self.models_loaded           = False
 
     def load_models(self):
@@ -158,6 +259,7 @@ class MLAnomalyDetector:
         """
         logger.info("⏳ Waiting for TensorFlow import to complete…")
         # Wait up to 120 s — TF can be slow on first import / cold start
+        self._load_file_pkl_model()
         _tf_import_done.wait(timeout=120)
 
         try:
@@ -199,9 +301,10 @@ class MLAnomalyDetector:
         self.models_loaded             = True
         current_stats['models_loaded'] = True
 
-        if self.file_model and self.mouse_model:
+        file_model_ready = self.file_model is not None or self.file_pkl_model is not None
+        if file_model_ready and self.mouse_model:
             status = "✅ Both ML models loaded — real inference active"
-        elif self.file_model:
+        elif file_model_ready:
             status = "⚠️  File model loaded; mouse model missing — partial inference"
         elif self.mouse_model:
             status = "⚠️  Mouse model loaded; file model missing — partial inference"
@@ -216,6 +319,95 @@ class MLAnomalyDetector:
             pass
 
     # ── Feature extractors ────────────────────────────────────────────────────
+    def _load_file_pkl_model(self):
+        """Load Kaggle best_model/*.pkl file-access artifact when available."""
+        try:
+            import json
+            import joblib
+        except Exception as exc:
+            logger.info(f"PKL file model skipped: joblib/json unavailable ({exc})")
+            return
+
+        if os.path.exists(FILE_MODEL_FEATURE_NAMES_PATH):
+            try:
+                with open(FILE_MODEL_FEATURE_NAMES_PATH, 'r', encoding='utf-8') as f:
+                    names = json.load(f)
+                if isinstance(names, list):
+                    self.file_pkl_feature_names = [str(name) for name in names]
+                elif isinstance(names, dict):
+                    raw = names.get('feature_names') or names.get('features') or []
+                    self.file_pkl_feature_names = [str(name) for name in raw]
+            except Exception as exc:
+                logger.warning(f"Could not read PKL feature names: {exc}")
+
+        for candidate in FILE_PKL_MODEL_CANDIDATES:
+            if not os.path.exists(candidate):
+                continue
+            try:
+                self.file_pkl_model = joblib.load(candidate)
+                self.file_pkl_model_path = candidate
+                logger.info(f"File PKL model loaded: {candidate}")
+                return
+            except Exception as exc:
+                logger.warning(f"Could not load file PKL model {candidate}: {exc}")
+
+    def _file_pkl_vector(self, features):
+        """
+        Convert live 3-feature events into the Kaggle training feature vector.
+        Unknown training columns are filled with 0 so the model can still run.
+        """
+        try:
+            size_risk, ext_risk, op_risk = [float(x) for x in list(features)[:3]]
+        except Exception:
+            size_risk, ext_risk, op_risk = 0.0, 0.2, 0.1
+
+        values = {
+            'size_risk': size_risk,
+            'ext_risk': ext_risk,
+            'extension_risk': ext_risk,
+            'op_risk': op_risk,
+            'operation_risk': op_risk,
+            'Rapid_file_access': max(size_risk, op_risk),
+            'Executable_File_Access': 1.0 if ext_risk >= 0.7 else 0.0,
+            'Access_Frequency_Anomaly': max(size_risk, op_risk),
+            'Unusual_file_access': ext_risk,
+            'Data_exfilteration': size_risk,
+            'signature_mismatch': 0.0,
+            'Content_Mismatch': 0.0,
+            'Hours': 0.5,
+            'to_removable_media': 0.0,
+            'from_removable_media': 0.0,
+        }
+
+        names = self.file_pkl_feature_names
+        if names:
+            return [values.get(name, 0.0) for name in names]
+        return [size_risk, ext_risk, op_risk]
+
+    def _predict_file_pkl_anomaly(self, features):
+        if self.file_pkl_model is None:
+            return None
+        try:
+            import numpy as _np
+            row = _np.array(self._file_pkl_vector(features), dtype=_np.float32).reshape(1, -1)
+
+            if hasattr(self.file_pkl_model, 'predict'):
+                pred = self.file_pkl_model.predict(row)
+                raw = pred[0] if hasattr(pred, '__len__') else pred
+                if isinstance(raw, str):
+                    text = raw.lower()
+                    return 0.9 if 'anom' in text or 'attack' in text else 0.1
+                numeric = float(raw)
+                return 0.9 if numeric == 1.0 else 0.1
+
+            if hasattr(self.file_pkl_model, 'decision_function'):
+                score = self.file_pkl_model.decision_function(row)
+                raw = float(score[0] if hasattr(score, '__len__') else score)
+                return float(max(0.0, min(1.0, 1.0 - raw)))
+        except Exception as exc:
+            logger.debug(f"File PKL predict error: {exc}")
+        return None
+
     def extract_file_features(self, ev):
         size     = ev.get('size', 0)
         filename = ev.get('filename', '')
@@ -251,10 +443,10 @@ class MLAnomalyDetector:
             return np.array([
                 float(x) / 1920.0,
                 float(y) / 1080.0,
-                min(float(speed) / 2000.0, 1.0),
+                min(float(speed) / MOUSE_SPEED_NORMALIZER, 1.0),
             ], dtype=np.float32)
         except Exception:
-            return [float(x) / 1920.0, float(y) / 1080.0, min(float(speed) / 2000.0, 1.0)]
+            return [float(x) / 1920.0, float(y) / 1080.0, min(float(speed) / MOUSE_SPEED_NORMALIZER, 1.0)]
 
     # ── Predictors ────────────────────────────────────────────────────────────
     def predict_file_anomaly(self, features):
@@ -270,6 +462,10 @@ class MLAnomalyDetector:
                 heuristic = float(min(base, 0.65))
         except Exception:
             heuristic = 0.0
+
+        pkl_score = self._predict_file_pkl_anomaly(features)
+        if pkl_score is not None:
+            return pkl_score
 
         if self.file_model is None:
             return heuristic
@@ -297,7 +493,8 @@ class MLAnomalyDetector:
         try:
             speeds = [float(f[2]) for f in features_seq]
             avg_speed = sum(speeds) / len(speeds) if speeds else 0.0
-            heuristic = float(min(avg_speed, 0.95))
+            peak_speed = max(speeds) if speeds else 0.0
+            heuristic = float(min(max(avg_speed, peak_speed * 0.85), 0.95))
         except Exception:
             heuristic = 0.0
 
@@ -461,7 +658,7 @@ class MouseTracker:
                 self.movement_buffer[-SEQUENCE_LENGTH:])
         else:
             try:
-                anomaly_score = min(float(features[2]), 0.5)
+                anomaly_score = min(float(features[2]), 0.95)
             except Exception:
                 anomaly_score = 0.0
 
@@ -516,6 +713,8 @@ class FileMonitor:
         self.monitor_thread = None
         self.file_state     = {}
         self.last_emit_time = 0
+        self.recent_events  = {}
+        self.recent_paths   = {}
 
         candidates = [
             os.path.expanduser("~\\Desktop"),
@@ -543,11 +742,41 @@ class FileMonitor:
                 winreg.CloseKey(_key)
             except Exception:
                 pass
-        self.watched_paths = list({p for p in candidates if os.path.isdir(p)})
+        self.watched_paths = self._normalize_watch_paths(candidates)
         if not self.watched_paths:
             home = os.path.expanduser("~")
             if os.path.isdir(home):
                 self.watched_paths = [home]
+
+    def _normalize_watch_paths(self, paths):
+        """Remove duplicate and nested watch roots to avoid double counting."""
+        normalized = []
+        seen = set()
+        for path in paths:
+            if not path or not os.path.isdir(path):
+                continue
+            real = os.path.normcase(os.path.abspath(path))
+            if real in seen:
+                continue
+            seen.add(real)
+            normalized.append(os.path.abspath(path))
+
+        result = []
+        for path in sorted(normalized, key=len):
+            real = os.path.normcase(os.path.abspath(path))
+            is_nested = False
+            for existing in result:
+                existing_real = os.path.normcase(os.path.abspath(existing))
+                try:
+                    common = os.path.commonpath([real, existing_real])
+                except ValueError:
+                    common = ''
+                if common == existing_real:
+                    is_nested = True
+                    break
+            if not is_nested:
+                result.append(path)
+        return result
 
     def start(self):
         if self.running:
@@ -633,6 +862,9 @@ class FileMonitor:
 
     def _process_event(self, event):
         global file_events, current_stats
+        if self._is_duplicate_event(event):
+            return
+
         features      = detector.extract_file_features(event)
         anomaly_score = detector.predict_file_anomaly(features)
         event['anomaly_score'] = float(anomaly_score)
@@ -673,9 +905,53 @@ class FileMonitor:
                 })
             except Exception:
                 pass
-            logger.info(f"🚨 FILE ANOMALY: {event['type']} – {event['filename']} "
+            logger.info(f"FILE ANOMALY: {event['type']} - {event['filename']} "
                         f"(score={anomaly_score:.3f})")
 
+    def _is_duplicate_event(self, event):
+        """
+        Suppress duplicate file events caused by overlapping folders or Windows
+        write behavior where a single action appears as create+modify.
+        """
+        now = time.time()
+        path = os.path.normcase(os.path.abspath(event.get('path', '')))
+        event_type = event.get('type', '')
+        size = int(event.get('size') or 0)
+
+        if not path:
+            return False
+
+        # Clean old cache entries.
+        for key, ts in list(self.recent_events.items()):
+            if now - ts > 10:
+                self.recent_events.pop(key, None)
+        for old_path, info in list(self.recent_paths.items()):
+            if now - info.get('time', 0) > 10:
+                self.recent_paths.pop(old_path, None)
+
+        exact_key = (path, event_type, size)
+        loose_key = (path, event_type)
+        if now - self.recent_events.get(exact_key, 0) <= 8:
+            return True
+        if now - self.recent_events.get(loose_key, 0) <= 8:
+            return True
+
+        last_for_path = self.recent_paths.get(path)
+        if last_for_path:
+            age = now - last_for_path.get('time', 0)
+            last_type = last_for_path.get('type')
+            # Treat create/delete followed by modify as the same user action.
+            if event_type == 'modified' and last_type in ('created', 'deleted') and age < 5:
+                return True
+            # Some Windows/OneDrive folders report the same create/delete across
+            # multiple scans. Count the first one only.
+            if event_type == last_type and age <= 8:
+                return True
+
+        self.recent_events[exact_key] = now
+        self.recent_events[loose_key] = now
+        self.recent_paths[path] = {'time': now, 'type': event_type, 'size': size}
+        return False
 
 # ── Instantiate monitors ──────────────────────────────────────────────────────
 file_monitor  = FileMonitor()
@@ -740,7 +1016,9 @@ def get_status():
     return jsonify({
         'monitoring_active':     monitoring_active,
         'models_loaded':         detector.models_loaded,
-        'file_model_loaded':     detector.file_model  is not None,
+        'file_model_loaded':     detector.file_model is not None or detector.file_pkl_model is not None,
+        'file_h5_model_loaded':  detector.file_model is not None,
+        'file_pkl_model_loaded': detector.file_pkl_model is not None,
         'mouse_model_loaded':    detector.mouse_model is not None,
         'file_events_count':     len(file_events),
         'mouse_events_count':    len(mouse_movements),
@@ -750,8 +1028,10 @@ def get_status():
         'numpy_available':       NUMPY_AVAILABLE,
         'mouse_mode':            'real' if PYNPUT_AVAILABLE else 'simulation',
         'file_model_path':       FILE_MODEL_PATH,
+        'file_pkl_model_path':   detector.file_pkl_model_path,
         'mouse_model_path':      MOUSE_MODEL_PATH,
         'file_model_exists':     os.path.exists(FILE_MODEL_PATH),
+        'file_pkl_model_exists': any(os.path.exists(p) for p in FILE_PKL_MODEL_CANDIDATES),
         'mouse_model_exists':    os.path.exists(MOUSE_MODEL_PATH),
     })
 

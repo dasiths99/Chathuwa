@@ -1,0 +1,45 @@
+{
+    "verification_date": "2026-05-09T19:32:35.572884",
+    "directory": "/kaggle/working/best_model",
+    "file_count": 15,
+    "categories": {
+        "Model Files": 2,
+        "Configuration Files": 10,
+        "Documentation Files": 2,
+        "Deployment Files": 0,
+        "Other Files": 1
+    },
+    "essential_files_check": {
+        "metadata.json": {
+            "exists": true,
+            "size_kb": 2.3056640625
+        },
+        "feature_names.json": {
+            "exists": true,
+            "size_kb": 0.5458984375
+        },
+        "scaler_info.json": {
+            "exists": false,
+            "size_kb": 0
+        },
+        "requirements.txt": {
+            "exists": true,
+            "size_kb": 0.4873046875
+        },
+        "deploy_model.py": {
+            "exists": false,
+            "size_kb": 0
+        }
+    },
+    "model_validation": {
+        "model_files_found": true,
+        "model_file_count": 2,
+        "model_files": [
+            "isolation_forest_simple.pkl",
+            "reconstruction_baseline.pkl"
+        ],
+        "load_successful": true,
+        "model_type": "SimpleIsolationForest"
+    },
+    "next_steps": []
+}

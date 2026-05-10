@@ -1,0 +1,51 @@
+{
+    "total_samples": 9999,
+    "total_features": 26,
+    "split_method": "Random",
+    "test_size": 0.2,
+    "val_size": 0.1,
+    "split_sizes": {
+        "training": 7200,
+        "validation": 800,
+        "test": 1999
+    },
+    "split_percentages": {
+        "training": 72.007200720072,
+        "validation": 8.000800080008002,
+        "test": 19.99199919991999
+    },
+    "has_target": false,
+    "target_info": {
+        "n_classes": 0,
+        "class_distribution": {}
+    },
+    "feature_names": [
+        "Out_of_Working_Hours_encoded_log",
+        "Out_of_Working_Hours_encoded_sqrt",
+        "numerical_max",
+        "Out_of_Working_Hours_encoded",
+        "user_access_rank",
+        "user_bin",
+        "numerical_range",
+        "numerical_std",
+        "pc_sqrt",
+        "user",
+        "user_sqrt",
+        "user_bin_ew",
+        "pc_cubed",
+        "pc",
+        "Rapid_file_access",
+        "pc_bin",
+        "numerical_min",
+        "pc_log",
+        "numerical_mean",
+        "user_access_frequency",
+        "user_log",
+        "user_cubed",
+        "Rapid_file_access_bin_ew",
+        "pc_squared",
+        "user_squared",
+        "pc_bin_ew"
+    ],
+    "split_timestamp": "2026-05-10T01:00:44.375068"
+}

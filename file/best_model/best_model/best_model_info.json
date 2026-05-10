@@ -1,0 +1,7 @@
+{
+    "model_name": "reconstruction_baseline",
+    "score": 1.7679747778850297,
+    "validation_anomaly_rate": 0.115,
+    "training_time": 0.0045719146728515625,
+    "selection_timestamp": "2026-05-09T19:28:19.010012"
+}

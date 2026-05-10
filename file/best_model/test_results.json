@@ -1,0 +1,19 @@
+{
+    "model_name": "isolation_forest_simple",
+    "model_type": "SimpleIsolationForest",
+    "evaluation_timestamp": "2026-05-10T01:00:49.215346",
+    "test_set_size": 1999,
+    "score_statistics": {
+        "mean": -0.7847438901925415,
+        "std": 0.2526851446903667,
+        "min": -1.698321267881584,
+        "max": -0.254264856593492
+    },
+    "predictions": {
+        "total_samples": 1999,
+        "normal_samples": 200,
+        "anomaly_samples": 1799,
+        "anomaly_rate_percent": 89.99499749874937,
+        "prediction_time_seconds": 0.7852232456207275
+    }
+}

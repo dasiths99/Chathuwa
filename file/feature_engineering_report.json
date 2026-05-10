@@ -1,0 +1,139 @@
+{
+    "original_shape": [
+        9999,
+        4
+    ],
+    "engineered_shape": [
+        9999,
+        26
+    ],
+    "target_column": null,
+    "target_present": false,
+    "feature_categories": {
+        "temporal_features": 0,
+        "categorical_encoded": 3,
+        "numerical_original": 3,
+        "numerical_engineered": 13,
+        "domain_specific": 2,
+        "statistical_aggregates": 5
+    },
+    "feature_category_details": {
+        "temporal_features": [],
+        "categorical_encoded": [
+            "Out_of_Working_Hours_encoded",
+            "Out_of_Working_Hours_encoded_sqrt",
+            "Out_of_Working_Hours_encoded_log"
+        ],
+        "numerical_original": [
+            "user",
+            "pc",
+            "Rapid_file_access"
+        ],
+        "numerical_engineered": [
+            "pc_squared",
+            "pc_cubed",
+            "pc_sqrt",
+            "pc_log",
+            "user_squared",
+            "user_cubed",
+            "user_sqrt",
+            "user_log",
+            "user_bin",
+            "user_bin_ew",
+            "pc_bin",
+            "pc_bin_ew",
+            "Rapid_file_access_bin_ew"
+        ],
+        "domain_specific": [
+            "user_access_frequency",
+            "user_access_rank"
+        ],
+        "statistical_aggregates": [
+            "numerical_mean",
+            "numerical_std",
+            "numerical_min",
+            "numerical_max",
+            "numerical_range"
+        ]
+    },
+    "temporal_features_created": [],
+    "categorical_encoding_report": [
+        {
+            "original_column": "Out_of_Working_Hours",
+            "unique_values": 2,
+            "encoding_strategy": "Label Encoding",
+            "encoded_features": [
+                "Out_of_Working_Hours_encoded"
+            ]
+        }
+    ],
+    "numerical_engineering_report": [
+        {
+            "base_feature": "pc",
+            "variance": 6862341.45452907,
+            "created_polynomials": [
+                "pc_squared",
+                "pc_cubed",
+                "pc_sqrt",
+                "pc_log"
+            ]
+        },
+        {
+            "base_feature": "user",
+            "variance": 2068934.0329558458,
+            "created_polynomials": [
+                "user_squared",
+                "user_cubed",
+                "user_sqrt",
+                "user_log"
+            ]
+        },
+        {
+            "base_feature": "Out_of_Working_Hours_encoded",
+            "variance": 0.08792987720456383,
+            "created_polynomials": [
+                "Out_of_Working_Hours_encoded_squared",
+                "Out_of_Working_Hours_encoded_cubed",
+                "Out_of_Working_Hours_encoded_sqrt",
+                "Out_of_Working_Hours_encoded_log"
+            ]
+        },
+        {
+            "binned_feature": "user",
+            "created_bins": [
+                "user_bin",
+                "user_bin_ew"
+            ]
+        },
+        {
+            "binned_feature": "pc",
+            "created_bins": [
+                "pc_bin",
+                "pc_bin_ew"
+            ]
+        },
+        {
+            "binned_feature": "Rapid_file_access",
+            "created_bins": [
+                "Rapid_file_access_bin",
+                "Rapid_file_access_bin_ew"
+            ]
+        }
+    ],
+    "domain_features_created": [
+        "user_access_frequency",
+        "user_access_rank"
+    ],
+    "features_removed": {
+        "constant_features": [
+            "Rapid_file_access_bin"
+        ],
+        "quasi_constant_features": [],
+        "duplicate_features": [
+            "Out_of_Working_Hours_encoded_squared",
+            "Out_of_Working_Hours_encoded_cubed",
+            "Out_of_Working_Hours_encoded_cubed"
+        ]
+    },
+    "feature_engineering_timestamp": "2026-05-10T01:00:39.187126"
+}

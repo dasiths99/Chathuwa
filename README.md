@@ -1,55 +1,67 @@
-# AN ML-ENABLED ARCHITECTURE FOR USER WEB ACCESSING BEHAVIORS
+# CyberWatch Research Project
 
-Real-time encrypted web traffic behavior monitoring and policy-aware threat detection system. Classifies HTTPS flows into Allowed / Restricted / Suspicious using XGBoost on side-channel features — without decrypting payloads.
+Python/Flask security monitoring project.
 
-## Port Map
+## New Laptop Setup
 
-| Port | Service |
-|------|---------|
-| 5000 | Main dashboard (separate component) |
-| 5001 | Other component |
-| 5002 | THIS component frontend |
-| 5003 | Other component |
-| 8002 | THIS component FastAPI backend |
-| 8080 | mitmproxy traffic interceptor |
+1. Copy the full project folder to the new laptop.
+2. Install Python 3.10, 3.11, or 3.12.
+3. During Python install, tick **Add python.exe to PATH**.
+4. Double-click:
 
-## Setup
+```bat
+setup_full_project.bat
+```
 
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+The setup file rebuilds `.venv` for that laptop and installs all Python packages.
+Do not copy an old `.venv` from another laptop; virtual environments are not portable.
 
-2. Train model — open `restricted/web-access-anolamy-detection.ipynb` → Run All Cells
+## Run Full Project
 
-3. Start backend:
-   ```bash
-   bash run.sh
-   ```
+Normal run:
 
-4. Start proxy:
-   ```bash
-   cd proxy && bash start_proxy.sh
-   ```
+```bat
+start_full_project.bat
+```
 
-5. Configure browser proxy: `127.0.0.1` port `8080`
+Administrator run for real network packet capture:
 
-6. Install CA certificate: visit `http://mitm.it` in browser → install certificate
+```bat
+start_full_project_admin.bat
+```
 
-7. Open frontend: `templates/web_accessing.html` in browser
+Main URLs:
 
-8. Browse any website — see live classifications in the dashboard
+- Main dashboard: `http://localhost:5000`
+- Network Flow Monitor: `http://localhost:5001`
+- Web Access Monitor: `http://localhost:5002`
+- File & Mouse Monitor: `http://localhost:5003`
+- API Behavior Analysis: `http://localhost:5005/api-analyzer`
 
-## API Docs
+## Run Only API Behavior Analysis
 
-Swagger UI: http://localhost:8002/docs
+```bat
+start_api_5005.bat
+```
 
-## How Real Traffic Capture Works
+Open:
 
-mitmproxy intercepts HTTPS at the TLS layer and extracts metadata only:
-- Domain name (from TLS SNI)
-- Timing and packet statistics
-- TLS version and JA3 fingerprint
-- Byte counts and entropy
+```text
+http://localhost:5005/api-analyzer
+```
 
-No payload content is read or stored. Features are sent to the XGBoost model for classification, matching research paper methodology exactly.
+## Manual System Tools
+
+For live packet capture, install Npcap:
+
+```text
+https://npcap.com/
+```
+
+Then run `start_full_project_admin.bat`.
+
+If `netifaces` fails during setup, install Microsoft C++ Build Tools and run setup again:
+
+```text
+https://visualstudio.microsoft.com/visual-cpp-build-tools/
+```
