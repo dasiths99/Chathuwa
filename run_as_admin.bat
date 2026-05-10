@@ -39,20 +39,57 @@ if not exist "app.py" (
 echo Project directory: %CD%
 echo.
 
+set "PY="
+call py -3.12 -c "import sys" >nul 2>&1 && set "PY=py -3.12"
+if not defined PY (
+    call py -3.11 -c "import sys" >nul 2>&1 && set "PY=py -3.11"
+)
+if not defined PY (
+    call py -3 -c "import sys" >nul 2>&1 && set "PY=py -3"
+)
+if not defined PY (
+    call python -c "import sys" >nul 2>&1 && set "PY=python"
+)
+if not defined PY (
+    echo ERROR: No working Python was found.
+    echo Install Python 3.11 or 3.12, then run this file again.
+    pause
+    exit /b 1
+)
+
+for /f "delims=" %%V in ('%PY% -c "import sys; print(str(sys.version_info.major)+'.'+str(sys.version_info.minor))"') do set "PY_VERSION=%%V"
+for /f "delims=" %%T in ('%PY% -c "import sys; print(1 if sys.version_info ^< (3,13) else 0)"') do set "CAN_INSTALL_TENSORFLOW=%%T"
+
+echo Python command : %PY%
+echo Python version : %PY_VERSION%
+if not "%CAN_INSTALL_TENSORFLOW%"=="1" (
+    echo NOTE: TensorFlow is skipped on Python %PY_VERSION%.
+    echo       TensorFlow currently has no compatible package for this Python version.
+    echo       The app will run with heuristic/fallback detection.
+)
+echo.
+
 :: Hard reset: kill old python processes (prevents zombie :5001 listeners)
 echo Stopping old Python services (if any)...
 taskkill /F /IM python.exe /T >nul 2>&1
 
 :: netifaces is optional and needs MSVC to build — not used by network.py
 echo Installing / updating Python packages ^(skipping netifaces^)...
-py -m pip install -q Flask Flask-SocketIO Flask-CORS python-socketio scapy psutil eventlet python-dotenv numpy pynput tensorflow joblib scikit-learn
+call %PY% -m pip install -q Flask Flask-SocketIO Flask-CORS python-socketio scapy psutil eventlet python-dotenv numpy pynput joblib scikit-learn
 if %errorlevel% neq 0 (
     echo pip reported an error; trying minimal set...
-    py -m pip install -q Flask Flask-SocketIO python-socketio scapy psutil
+    call %PY% -m pip install -q Flask Flask-SocketIO python-socketio scapy psutil
+)
+
+if "%CAN_INSTALL_TENSORFLOW%"=="1" (
+    echo Installing optional TensorFlow support...
+    call %PY% -m pip install -q tensorflow
+) else (
+    echo Skipping optional TensorFlow install.
 )
 
 echo Installing FastAPI stack for Web Access Monitor ^(port 5002^)...
-py -m pip install -q fastapi "uvicorn[standard]" pandas openpyxl xgboost shap python-multipart aiofiles
+call %PY% -m pip install -q fastapi "uvicorn[standard]" pandas openpyxl xgboost shap python-multipart aiofiles
 
 echo.
 echo ========================================
@@ -65,7 +102,7 @@ echo File ^& Mouse  : http://localhost:5003
 echo ========================================
 echo.
 
-py app.py
+call %PY% app.py
 if %errorlevel% neq 0 (
     echo.
     echo Python exited with error %errorlevel%.
