@@ -703,7 +703,18 @@ class NetworkMLModel:
     def _load(self):
         base = os.path.join(BASE_DIR, 'network')
         keras_path   = os.path.join(base, 'model.keras')
-        sklearn_path = os.path.join(base, 'classifier.pkl')
+        sklearn_candidates = [
+            (
+                os.path.join(base, 'classifier.pkl'),
+                os.path.join(base, 'label_encoder.pkl'),
+                os.path.join(base, 'scaler.pkl'),
+            ),
+            (
+                os.path.join(base, 'model_2.pkl'),
+                os.path.join(base, 'label_encoder_2.pkl'),
+                os.path.join(base, 'scaler_2.pkl'),
+            ),
+        ]
         encoder_path = os.path.join(base, 'label_encoder.pkl')
         scaler_path  = os.path.join(base, 'scaler.pkl')
 
@@ -717,18 +728,29 @@ class NetworkMLModel:
 
         try:
             if os.path.exists(keras_path):
-                from tensorflow.keras.models import load_model as _lm  # type: ignore
-                self.model     = _lm(keras_path)
-                self.model_type = 'keras'
-                print(f"✅ Network ML model loaded: {keras_path}")
-            elif os.path.exists(sklearn_path):
-                import joblib
-                self.model      = joblib.load(sklearn_path)
-                self.model_type = 'sklearn'
-                print(f"✅ Network sklearn classifier loaded: {sklearn_path}")
-            else:
+                try:
+                    from tensorflow.keras.models import load_model as _lm  # type: ignore
+                    self.model     = _lm(keras_path)
+                    self.model_type = 'keras'
+                    print(f"✅ Network ML model loaded: {keras_path}")
+                except Exception as keras_error:
+                    print(f"⚠️  Keras model load failed: {keras_error}")
+
+            if self.model is None:
+                for model_path, candidate_encoder, candidate_scaler in sklearn_candidates:
+                    if not os.path.exists(model_path):
+                        continue
+                    import joblib
+                    self.model      = joblib.load(model_path)
+                    self.model_type = 'sklearn'
+                    encoder_path    = candidate_encoder
+                    scaler_path     = candidate_scaler
+                    print(f"✅ Network sklearn classifier loaded: {model_path}")
+                    break
+
+            if self.model is None:
                 print("⚠️  No trained model found in network/ — flow heuristics active")
-                print(f"   Place model.keras (Keras) or classifier.pkl (sklearn) + label_encoder.pkl "
+                print(f"   Place model.keras (Keras) or classifier.pkl/model_2.pkl (sklearn) + label_encoder.pkl "
                       f"in:\n   {base}")
                 return
 

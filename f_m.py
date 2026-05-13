@@ -229,7 +229,9 @@ FILE_MODEL_FEATURE_NAMES_PATH = os.path.join(FILE_PKL_MODEL_DIR, 'feature_names.
 FILE_FEATURE_DIM  = 3
 MOUSE_FEATURE_DIM = 3
 SEQUENCE_LENGTH   = 10
-MOUSE_SPEED_NORMALIZER = 1000.0
+MOUSE_SPEED_NORMALIZER = 5000.0
+MOUSE_EXTREME_SPEED_THRESHOLD = 0.70
+MOUSE_ALERT_THRESHOLD = 0.75
 
 
 # ── ML Anomaly Detector ───────────────────────────────────────────────────────
@@ -494,7 +496,16 @@ class MLAnomalyDetector:
             speeds = [float(f[2]) for f in features_seq]
             avg_speed = sum(speeds) / len(speeds) if speeds else 0.0
             peak_speed = max(speeds) if speeds else 0.0
-            heuristic = float(min(max(avg_speed, peak_speed * 0.85), 0.95))
+            if peak_speed < MOUSE_EXTREME_SPEED_THRESHOLD:
+                # Ordinary movement should stay visibly normal even if the
+                # autoencoder reconstruction is imperfect on this machine.
+                heuristic = float(min(avg_speed * 0.25, 0.20))
+            else:
+                extreme_ratio = (
+                    (peak_speed - MOUSE_EXTREME_SPEED_THRESHOLD) /
+                    max(1.0 - MOUSE_EXTREME_SPEED_THRESHOLD, 0.001)
+                )
+                heuristic = float(min(0.75 + extreme_ratio * 0.20, 0.95))
         except Exception:
             heuristic = 0.0
 
@@ -510,7 +521,10 @@ class MLAnomalyDetector:
             recon = self.mouse_model.predict(inp, verbose=0)
             diff  = [a - b for a, b in zip(inp.flatten(), recon.flatten())]
             mse   = sum(d*d for d in diff) / len(diff)
-            return float(min(mse / self.mouse_anomaly_threshold, 1.0))
+            model_score = float(min(mse / self.mouse_anomaly_threshold, 1.0))
+            if peak_speed < MOUSE_EXTREME_SPEED_THRESHOLD:
+                return float(min(model_score, heuristic, 0.20))
+            return float(max(model_score, heuristic))
         except Exception as e:
             logger.debug(f"Mouse predict error: {e}")
             return heuristic
@@ -674,7 +688,7 @@ class MouseTracker:
 
         current_stats['total_mouse_events'] += 1
         current_stats['mouse_anomaly_score'] = float(anomaly_score)
-        if anomaly_score > 0.5:
+        if anomaly_score >= MOUSE_ALERT_THRESHOLD:
             current_stats['mouse_anomalies'] += 1
 
         now = time.time()
@@ -694,7 +708,7 @@ class MouseTracker:
                 logger.debug(f"Emit error (mouse): {e}")
             self.last_emit_time = now
 
-        if anomaly_score > 0.5:
+        if anomaly_score >= MOUSE_ALERT_THRESHOLD:
             try:
                 socketio.emit('anomaly_alert', {
                     'type':      'mouse',
